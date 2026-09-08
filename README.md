@@ -49,26 +49,53 @@ flowchart TD
 
 ---
 
-## 2. Included Quantum Algorithms & Benchmarks
+## 2. Repository Structure
+
+```text
+mlir-programs/
+├── README.md                            # Comprehensive documentation & algorithm guide
+├── algorithms/                          # Production-grade quantum algorithms
+│   ├── bell_state.mlir                  # Minimal distributed entanglement (2 qubits)
+│   ├── bernstein_vazirani.mlir          # Hidden bitstring parity algorithm (5 qubits)
+│   ├── deutsch_jozsa.mlir               # Single-query balanced/constant test (3 qubits)
+│   ├── ghz_state.mlir                   # 4-qubit Greenberger-Horne-Zeilinger state
+│   ├── grover_search.mlir               # 3-qubit database search marking |101> (100%)
+│   ├── quantum_fourier_transform.mlir   # 4-qubit distributed QFT subroutine
+│   ├── quantum_teleportation.mlir       # Full 3-qubit state teleportation protocol
+│   └── superdense_coding.mlir           # 2 classical bits sent via 1 qubit
+├── benchmarks/                          # Multi-QPU distributed compiler stress tests
+│   ├── cross_qpu_cnot.mlir              # Cross-chip CNOT verification benchmark
+│   └── cross_qpu_toffoli.mlir           # Cross-chip Toffoli (CCX) decomposition benchmark
+├── docs/                                # 500+ line in-depth technical architecture guides
+│   ├── dqc_vs_c_compiler_deep_comparison.md
+│   ├── how_dqc_executes_on_hardware.md
+│   └── visual_hardware_journey.md
+└── scripts/                             # Automated testing & verification runners
+    └── run_all.sh                       # 1-command verification suite for all 10 programs
+```
+
+---
+
+## 3. Included Quantum Algorithms & Benchmarks
 
 This repository contains a curated, non-duplicate suite of 10 fundamental quantum computing algorithms and multi-QPU communication benchmarks:
 
 | File Name | Algorithm / Protocol | Qubits | QPUs | Dominant Features | Expected Output State |
 | :--- | :--- | :---: | :---: | :--- | :--- |
-| [`bell_state.mlir`](bell_state.mlir) | Bell State Generation | 2 | 2 | Minimal distributed entanglement | 50% \|00>, 50% \|11> |
-| [`ghz_state.mlir`](ghz_state.mlir) | GHZ Multi-Qubit State | 4 | 2 | Linear CNOT cascade across partition | 50% \|0000>, 50% \|1111> |
-| [`superdense_coding.mlir`](superdense_coding.mlir) | Superdense Coding | 2 | 2 | 2 classical bits sent via 1 qubit | 100% \|11> |
-| [`deutsch_jozsa.mlir`](deutsch_jozsa.mlir) | Deutsch-Jozsa Algorithm | 3 | 2 | Single-query balanced vs constant test | 50% \|011>, 50% \|111> |
-| [`bernstein_vazirani.mlir`](bernstein_vazirani.mlir) | Bernstein-Vazirani Algorithm | 5 | 2 | Recovers hidden bitstring $s = 1011$ | 50% \|01011>, 50% \|11011> |
-| [`grover_search.mlir`](grover_search.mlir) | Grover's Search Algorithm | 3 | 2 | Phase inversion & diffusion ($s = \|101\rangle$) | 100% \|101> |
-| [`quantum_teleportation.mlir`](quantum_teleportation.mlir) | Quantum State Teleportation | 3 | 2 | Full Bell measurement & Pauli correction | 100% \|111> |
-| [`quantum_fourier_transform.mlir`](quantum_fourier_transform.mlir) | Distributed QFT | 4 | 2 | Controlled-phase $R_z$ cascade & bit-reversal | Verified phase superposition |
-| [`cross_qpu_cnot.mlir`](cross_qpu_cnot.mlir) | Cross-QPU CNOT Benchmark | 4 | 2 | TeleGate synthesis verification | 100% \|1001> |
-| [`cross_qpu_toffoli.mlir`](cross_qpu_toffoli.mlir) | Cross-QPU Toffoli (CCX) | 6 | 2 | Distributed multi-controlled gate | 100% \|101001> |
+| [`bell_state.mlir`](algorithms/bell_state.mlir) | Bell State Generation | 2 | 2 | Minimal distributed entanglement | 50% \|00>, 50% \|11> |
+| [`ghz_state.mlir`](algorithms/ghz_state.mlir) | GHZ Multi-Qubit State | 4 | 2 | Linear CNOT cascade across partition | 50% \|0000>, 50% \|1111> |
+| [`superdense_coding.mlir`](algorithms/superdense_coding.mlir) | Superdense Coding | 2 | 2 | 2 classical bits sent via 1 qubit | 100% \|11> |
+| [`deutsch_jozsa.mlir`](algorithms/deutsch_jozsa.mlir) | Deutsch-Jozsa Algorithm | 3 | 2 | Single-query balanced vs constant test | 50% \|011>, 50% \|111> |
+| [`bernstein_vazirani.mlir`](algorithms/bernstein_vazirani.mlir) | Bernstein-Vazirani Algorithm | 5 | 2 | Recovers hidden bitstring $s = 1011$ | 50% \|01011>, 50% \|11011> |
+| [`grover_search.mlir`](algorithms/grover_search.mlir) | Grover's Search Algorithm | 3 | 2 | Phase inversion & diffusion ($s = \|101\rangle$) | 100% \|101> |
+| [`quantum_teleportation.mlir`](algorithms/quantum_teleportation.mlir) | Quantum State Teleportation | 3 | 2 | Full Bell measurement & Pauli correction | 100% \|111> |
+| [`quantum_fourier_transform.mlir`](algorithms/quantum_fourier_transform.mlir) | Distributed QFT | 4 | 2 | Controlled-phase $R_z$ cascade & bit-reversal | Verified phase superposition |
+| [`cross_qpu_cnot.mlir`](benchmarks/cross_qpu_cnot.mlir) | Cross-QPU CNOT Benchmark | 4 | 2 | TeleGate synthesis verification | 100% \|1001> |
+| [`cross_qpu_toffoli.mlir`](benchmarks/cross_qpu_toffoli.mlir) | Cross-QPU Toffoli (CCX) | 6 | 2 | Distributed multi-controlled gate | 100% \|101001> |
 
 ---
 
-## 3. Algorithm Deep-Dives & Source Implementations
+## 4. Algorithm Deep-Dives & Source Implementations
 
 ### 1. Bell State Generation (`bell_state.mlir`)
 The canonical quantum entanglement experiment. Applying a Hadamard gate to qubit 0 creates an equal superposition:
@@ -482,7 +509,7 @@ module {
 
 ---
 
-## 4. DQC Compilation & Command Reference
+## 5. DQC Compilation & Command Reference
 
 The `dqc` driver binary provides comprehensive flags to inspect every intermediate compilation pass and emit native binaries.
 
@@ -541,33 +568,38 @@ dqc bell_state.mlir --pass5   # Pass 5: LLVM Lowering
 
 ---
 
-## 5. In-Depth Technical Documentation
+## 6. In-Depth Technical Documentation
 
 This repository contains two exhaustive, 500+ line technical architecture guides:
 
-1. **[`how_dqc_executes_on_hardware.md`](how_dqc_executes_on_hardware.md)**  
-   *A complete guide explaining how quantum circuits execute on physical computer hardware (CPU registers, L1/L2 caches, RAM layout, SIMD vectorization, and Born-rule measurement).*
-2. **[`dqc_vs_c_compiler_deep_comparison.md`](dqc_vs_c_compiler_deep_comparison.md)**  
+1. **[`visual_hardware_journey.md`](docs/visual_hardware_journey.md)**  
+   *A visual-first, diagram-driven explanation of what your CPU, RAM, and GPU are physically doing when executing DQC quantum programs.*
+2. **[`how_dqc_executes_on_hardware.md`](docs/how_dqc_executes_on_hardware.md)**  
+   *An in-depth 500+ line technical guide explaining the memory layout, ALU bitmasking, ARM NEON/AVX SIMD vectorization, and Born-rule state collapse.*
+3. **[`dqc_vs_c_compiler_deep_comparison.md`](docs/dqc_vs_c_compiler_deep_comparison.md)**  
    *An industry-standard comparative study analyzing 15 fundamental differences between Classical C Compilers (Clang/GCC) and DQC, covering intermediate representations, no-cloning enforcement, register allocation vs. qubit placement, and NP-hard graph bisection.*
 
 ---
 
-## 6. Automated Verification Test Suite
+## 7. Automated Verification Test Suite
 
 To verify all quantum algorithms in this repository, execute the automated test loop:
 
 ```bash
-for file in *.mlir; do
-  echo "Testing: $file"
-  dqc "$file"
-done
+# Run the automated verification suite (compiles & tests all 10 programs)
+./scripts/run_all.sh
+
+# Or compile and run individual programs
+dqc algorithms/bell_state.mlir
+dqc algorithms/grover_search.mlir
+dqc benchmarks/cross_qpu_cnot.mlir
 ```
 
 All 10 circuits will compile, execute through the statevector simulator, and display their exact quantum state distribution.
 
 ---
 
-## 7. The DQC MLIR Dialect Specification
+## 8. The DQC MLIR Dialect Specification
 
 The `dqc` dialect defines quantum-specific types, operations, and attributes within MLIR's type system:
 
@@ -584,7 +616,7 @@ All operations are declared via **MLIR TableGen (`.td`)** files, providing autom
 
 ---
 
-## 8. Citation
+## 9. Citation
 
 If you utilize DQC or these MLIR programs in your research, please cite:
 
