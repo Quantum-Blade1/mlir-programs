@@ -38,10 +38,20 @@
 % --- Tables & Typography ---
 \usepackage{booktabs}
 \usepackage{tabularx}
+\usepackage{xltabular}
+\usepackage{longtable}
+\usepackage{emptypage} % Suppress headers and footers on completely empty pages
 \usepackage{array}
 \usepackage{multirow}
 \usepackage{caption}
 \usepackage{subcaption}
+
+% --- Penalty Settings to Eliminate Orphans, Widows, and Isolated Lines ---
+\widowpenalty=10000
+\clubpenalty=10000
+\displaywidowpenalty=10000
+\interfootnotelinepenalty=10000
+\raggedbottom
 
 % --- Headers & Footers ---
 \usepackage{fancyhdr}

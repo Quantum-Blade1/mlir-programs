@@ -483,13 +483,13 @@ On QPU $B$, apply local CNOT from $c_2 \to e_B$ and measure $e_B$ in the $Z$-bas
 \small
 \caption{Comparison of Distributed Non-Local Synthesis Paradigms for 3-Qubit Toffoli and Fredkin Gates}
 \label{tab:distributed_toffoli_comparison}
-\begin{tabularx}{\textwidth}{l r r r r X}
+\begin{tabularx}{\textwidth}{p{4.2cm} c c c c X}
 \toprule
-\textbf{Synthesis Protocol} & \textbf{EPR Pairs} & \textbf{Classical Bits} & \textbf{$T$-Count} & \textbf{Network Rounds} & \textbf{Primary Advantage} \\
+\textbf{Synthesis Protocol} & \textbf{Ebits} & \textbf{C-Bits} & \textbf{$T$-Gates} & \textbf{Rounds} & \textbf{Primary Advantage} \\
 \midrule
 \textbf{Naive Telegate CCX} & 6 & 12 & 7 & 6 & No ancilla required \\
 \textbf{Jones Cat-GHZ CCX} & \textbf{3} & 6 & 4 & \textbf{2} & Minimal EPR consumption \\
-\textbf{Gottesman-Chuang Telemetry} & 4 & 8 & \textbf{1} (Magic) & 3 & Fault-tolerant distillation compatible \\
+\textbf{Gottesman-Chuang Telemetry} & 4 & 8 & \textbf{1} (Magic) & 3 & Distillation compatible \\
 \textbf{Distributed Fredkin (CSWAP)} & 4 & 8 & 7 & 3 & Direct multi-QPU state routing \\
 \bottomrule
 \end{tabularx}

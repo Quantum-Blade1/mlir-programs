@@ -3,10 +3,18 @@
 
 \markboth{List of Acronyms and Abbreviations}{List of Acronyms and Abbreviations}
 
-\begin{tabularx}{\textwidth}{llX}
+\small
+\begin{xltabular}{\textwidth}{p{2.4cm} p{7.2cm} X}
     \toprule
     \textbf{Acronym} & \textbf{Full Expansion} & \textbf{Primary Domain} \\
     \midrule
+    \endfirsthead
+    \toprule
+    \textbf{Acronym} & \textbf{Full Expansion} & \textbf{Primary Domain} \\
+    \midrule
+    \endhead
+    \bottomrule
+    \endfoot
     \textbf{ALAP} & As-Late-As-Possible & Compiler Scheduling \\
     \textbf{ASAP} & As-Soon-As-Possible & Compiler Scheduling \\
     \textbf{AWG} & Arbitrary Waveform Generator & Hardware Control \\
@@ -55,5 +63,4 @@
     \textbf{TWPA} & Traveling-Wave Parametric Amplifier & Microwave Quantum Optics \\
     \textbf{VQE} & Variational Quantum Eigensolver & Quantum Chemistry \\
     \textbf{XY4} & Four-Pulse Symmetrical Decoupling & Dynamical Decoupling \\
-    \bottomrule
-\end{tabularx}
+\end{xltabular}
