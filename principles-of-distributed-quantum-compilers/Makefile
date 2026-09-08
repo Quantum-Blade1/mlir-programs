@@ -27,7 +27,8 @@ $(PDF): $(TARGET).tex preamble.tex references.bib $(wildcard chapters/*.tex) $(w
 			$(PDFLATEX) -interaction=nonstopmode $(TARGET).tex \
 		) \
 	)
-	@echo "==> Successfully compiled $(PDF)!"
+	@mkdir -p output && cp $(PDF) output/Principles_of_Distributed_Quantum_Compilers.pdf && cp $(PDF) output/$(PDF)
+	@echo "==> Successfully compiled $(PDF) and updated output/ directory!"
 
 # Continuous compilation / live watch
 watch:
