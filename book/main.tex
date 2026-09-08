@@ -19,6 +19,8 @@
 \input{frontmatter/titlepage.tex}
 \input{frontmatter/dedication.tex}
 \input{frontmatter/preface.tex}
+\input{frontmatter/notation.tex}
+\input{frontmatter/acronyms.tex}
 
 \tableofcontents
 \listoffigures
@@ -60,8 +62,17 @@
 \input{chapters/ch15_future_quantum_datacenters.tex}
 
 % ------------------------------------------------------------------------------
-% Back Matter
+% Appendices & Back Matter
 % ------------------------------------------------------------------------------
+\appendix
+\part*{Appendices}
+\addcontentsline{toc}{part}{Appendices}
+
+\input{backmatter/appendix_a_math_foundations.tex}
+\input{backmatter/appendix_b_mlir_quickstart.tex}
+\input{backmatter/appendix_c_hardware_specs.tex}
+\input{backmatter/appendix_d_complete_benchmarks_code.tex}
+
 \backmatter
 
 \bibliographystyle{alpha}

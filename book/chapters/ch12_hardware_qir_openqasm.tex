@@ -5,27 +5,38 @@
 \textit{``The ultimate destination of quantum compilation is not an abstract mathematical graph; it is a synchronized sequence of nanosecond microwave pulses driving superconducting Josephson junctions inside a dilution refrigerator at 15 millikelvin.''}
 \end{quote}
 
-After the high-level optimizations, hypergraph partitioning, teleportation synthesis, and coherence-aware scheduling have completed, the compiler must cross the final boundary: translating intermediate representations into executable hardware instructions. In distributed systems, this lowering is fundamentally heterogeneous:
+% ======================================================================
+% OPENING NARRATIVE
+% ======================================================================
+\section*{Chapter Overview: Crossing the Final Hardware Boundary}
+
+After high-level algebraic optimizations, hypergraph partitioning, non-local gate synthesis, and coherence-aware DAG scheduling have completed, the compiler reaches the final compilation boundary: \textbf{Target Lowering}.
+
+In monolithic compilers, target lowering transforms an IR into machine code for a single CPU or GPU. In distributed quantum compilers, this lowering is fundamentally heterogeneous, multi-tiered, and constrained by quantum electrodynamics:
 \begin{enumerate}
-    \item \textbf{Quantum Device Code:} Each QPU must receive instructions encoded in a recognized quantum hardware intermediate representation, such as the LLVM-based **Quantum Intermediate Representation (QIR)** or **OpenQASM 3.0**.
-    \item \textbf{Pulse-Level Calibration:} Quantum gates must be synthesized into analog microwave or laser control envelopes (e.g., DRAG pulses) executed by FPGA-driven Arbitrary Waveform Generators (AWGs).
-    \item \textbf{Classical Orchestration Network:} A distributed synchronization daemon must coordinate classical messaging across high-speed optical links using sub-nanosecond clock synchronization (IEEE 1588 PTP / White Rabbit).
+    \item \textbf{Heterogeneous Code Generation:} The compiler must emit two distinct execution streams:
+    \begin{itemize}
+        \item \textit{Local Quantum Instructions:} Emitted in standardized formats like the LLVM-based \keyterm{Quantum Intermediate Representation (QIR)} or \keyterm{OpenQASM 3.0} with distributed pragmas and low-level \texttt{defcal} pulse calibration blocks.
+        \item \textit{Distributed Runtime Orchestration:} Emitted in C++ / MPI / RoCEv2 (RDMA over Converged Ethernet) network code to synchronize inter-refrigerator classical handshakes and trigger FPGA real-time feedforward fixups within nanosecond windows.
+    \end{itemize}
+    \item \textbf{Analog Pulse Calibration:} Abstract single-qubit and two-qubit unitary gates must be translated into continuous analog microwave waveforms---such as \keyterm{DRAG (Derivative Removal by Adiabatic Gate)} envelopes and Echoed Cross-Resonance (ECR) pulses---synthesized by $14\text{ GS/s}$ Digital-to-Analog Converters (DACs).
+    \item \textbf{Sub-Nanosecond Clock Synchronization:} The physical controllers across separate dilution refrigerators must be locked to a shared master optical reference using protocols like \keyterm{White Rabbit} (IEEE 1588 Precision Time Protocol) with $<10\text{ picoseconds}$ of phase jitter to prevent rotating-frame dephasing.
 \end{enumerate}
 
-This chapter details the mechanisms of Pass 5 in the DQC pipeline, examining QIR bytecode emission, OpenQASM 3.0 distributed syntax, microwave waveform synthesis, and the physical control hardware stack.
+This chapter details the mechanisms of Pass 5 in the DQC pipeline, examining QIR bytecode emission, OpenQASM 3.0 distributed syntax, microwave waveform synthesis, the complete C++ MPI/RDMA orchestrator runtime, and the physical control hardware stack.
 
 % ==============================================================================
 \section{The Distributed Quantum Control Architecture}
 \label{sec:hardware_control_stack}
 % ==============================================================================
 
-Figure~\ref{fig:hardware_control_stack} illustrates the multi-tier physical control architecture connecting the DQC compiler to physical qubits residing in cryogenic refrigerators.
+Figure~\ref{fig:hardware_control_stack_ch12_exp} illustrates the multi-tier physical control architecture connecting the DQC compiler to physical qubits residing in cryogenic refrigerators.
 
 \begin{figure}[htbp]
     \centering
     \begin{tikzpicture}[scale=0.88, >=stealth]
         % Tier 1: Compiler & Host
-        \draw[rounded corners=2mm, fill=blue!10, draw=darkblue, line width=1pt] (-5.5, 4.2) rectangle (5.5, 5.2);
+        \draw[rounded corners=2mm, fill=blue!10, draw=darkblue, line width=1pt] (-5.8, 4.2) rectangle (5.8, 5.2);
         \node[font=\bfseries\color{darkblue}] at (0, 4.85) {Distributed Quantum Compiler (DQC Master Host)};
         \node[font=\tiny\color{darkblue}] at (0, 4.45) {IR Optimization $\to$ Partitioning $\to$ QIR Generation $\to$ Pulse Calibration Database};
         
@@ -35,124 +46,470 @@ Figure~\ref{fig:hardware_control_stack} illustrates the multi-tier physical cont
         \node[font=\scriptsize\bfseries\color{compilerteal}, fill=white] at (0, 3.7) {100 GbE Optical RDMA + White Rabbit Clock ($< 10\text{ ps}$ Jitter)};
         
         % Tier 3: Local Hardware Controllers (QPU 0 and QPU 1)
-        \draw[rounded corners=2mm, fill=green!10, draw=compilerteal, line width=1pt] (-5.5, 1.8) rectangle (-0.5, 3.2);
-        \node[font=\small\bfseries\color{compilerteal}] at (-3, 2.85) {QPU 0 Master Controller};
-        \node[font=\tiny, align=center] at (-3, 2.3) {UltraScale+ FPGA / SoC\\AWG DACs ($14\text{ GS/s}$) + ADCs};
+        \draw[rounded corners=2mm, fill=green!10, draw=compilerteal, line width=1pt] (-5.8, 1.8) rectangle (-0.5, 3.2);
+        \node[font=\small\bfseries\color{compilerteal}] at (-3.15, 2.85) {QPU 0 Master Controller};
+        \node[font=\tiny, align=center] at (-3.15, 2.3) {UltraScale+ FPGA / SoC\\AWG DACs ($14\text{ GS/s}$) + ADCs};
         
-        \draw[rounded corners=2mm, fill=green!10, draw=compilerteal, line width=1pt] (0.5, 1.8) rectangle (5.5, 3.2);
-        \node[font=\small\bfseries\color{compilerteal}] at (3, 2.85) {QPU 1 Master Controller};
-        \node[font=\tiny, align=center] at (3, 2.3) {UltraScale+ FPGA / SoC\\AWG DACs ($14\text{ GS/s}$) + ADCs};
+        \draw[rounded corners=2mm, fill=green!10, draw=compilerteal, line width=1pt] (0.5, 1.8) rectangle (5.8, 3.2);
+        \node[font=\small\bfseries\color{compilerteal}] at (3.15, 2.85) {QPU 1 Master Controller};
+        \node[font=\tiny, align=center] at (3.15, 2.3) {UltraScale+ FPGA / SoC\\AWG DACs ($14\text{ GS/s}$) + ADCs};
         
         % Direct FPGA fast classical link for Pauli Fixup
-        \draw[<->, line width=2pt, color=red!70!black] (-0.5, 2.5) -- node[above, font=\tiny\bfseries] {Direct Fast Feedforward ($< 35\text{ ns}$)} (0.5, 2.5);
+        \draw[<->, line width=2pt, color=cautionred] (-0.5, 2.5) -- node[above, font=\tiny\bfseries] {Direct Fast Feedforward ($< 35\text{ ns}$)} (0.5, 2.5);
         
         % Tier 4: Cryogenic Attenuation Lines
-        \draw[->, line width=1.5pt, color=gray] (-3, 1.8) -- (-3, 0.4);
-        \draw[->, line width=1.5pt, color=gray] (3, 1.8) -- (3, 0.4);
-        \node[font=\tiny, fill=white] at (-3, 1.1) {Coaxial Cables ($-60\text{ dB}$)};
-        \node[font=\tiny, fill=white] at (3, 1.1) {Coaxial Cables ($-60\text{ dB}$)};
+        \draw[->, line width=1.5pt, color=gray] (-3.15, 1.8) -- (-3.15, 0.4);
+        \draw[->, line width=1.5pt, color=gray] (3.15, 1.8) -- (3.15, 0.4);
+        \node[font=\tiny, fill=white] at (-3.15, 1.1) {Coaxial Cables ($-60\text{ dB}$)};
+        \node[font=\tiny, fill=white] at (3.15, 1.1) {Coaxial Cables ($-60\text{ dB}$)};
         
         % Tier 5: Cryostats (15 mK)
-        \draw[rounded corners=3mm, fill=purple!10, draw=quantumviolet, line width=1pt] (-5.5, -1.8) rectangle (-0.5, 0.4);
-        \node[font=\small\bfseries\color{quantumviolet}] at (-3, 0.05) {Cryostat 0 ($15\text{ mK}$)};
-        \node[font=\tiny, align=center] at (-3, -0.7) {Superconducting QPU Chip\\Transmon Register $q_0 \dots q_7$};
+        \draw[rounded corners=3mm, fill=purple!10, draw=quantumviolet, line width=1pt] (-5.8, -1.8) rectangle (-0.5, 0.4);
+        \node[font=\small\bfseries\color{quantumviolet}] at (-3.15, 0.05) {Cryostat 0 ($15\text{ mK}$)};
+        \node[font=\tiny, align=center] at (-3.15, -0.7) {Superconducting QPU Chip\\Transmon Register $q_0 \dots q_7$};
         
-        \draw[rounded corners=3mm, fill=purple!10, draw=quantumviolet, line width=1pt] (0.5, -1.8) rectangle (5.5, 0.4);
-        \node[font=\small\bfseries\color{quantumviolet}] at (3, 0.05) {Cryostat 1 ($15\text{ mK}$)};
-        \node[font=\tiny, align=center] at (3, -0.7) {Superconducting QPU Chip\\Transmon Register $q_8 \dots q_{15}$};
+        % Tier 5: Cryostats (15 mK) Right
+        \draw[rounded corners=3mm, fill=purple!10, draw=quantumviolet, line width=1pt] (0.5, -1.8) rectangle (5.8, 0.4);
+        \node[font=\small\bfseries\color{quantumviolet}] at (3.15, 0.05) {Cryostat 1 ($15\text{ mK}$)};
+        \node[font=\tiny, align=center] at (3.15, -0.7) {Superconducting QPU Chip\\Transmon Register $q_8 \dots q_{15}$};
         
         % Cryogenic Quantum Interconnect
         \draw[<->, line width=2.5pt, color=quantumviolet, decorate, decoration={snake, amplitude=1.5mm, segment length=5mm}] 
             (-0.5, -0.7) -- node[above=5pt, font=\scriptsize\bfseries] {Cryogenic Microwave Link (EPR Channel)} (0.5, -0.7);
     \end{tikzpicture}
     \caption{The end-to-end hardware control stack for distributed quantum computing. The software compiler drives room-temperature FPGA waveform generators, which feed cryogenically attenuated microwave lines to actuate qubits at $15\text{ mK}$, while a sub-nanosecond synchronization fabric coordinates non-local measurements and feedforward fix-ups.}
-    \label{fig:hardware_control_stack}
+    \label{fig:hardware_control_stack_ch12_exp}
 \end{figure}
+
+The physical control hierarchy operates across four distinct environmental and thermal regimes:
+\begin{itemize}
+    \item \textbf{Room Temperature Host \& Networking Layer ($300\text{ K}$):} High-performance multi-core CPUs execute the DQC compilation pipeline, generating QIR LLVM bitcode, OpenQASM 3.0 pulse schedules, and MPI/RDMA network orchestration daemons.
+    \item \textbf{Digital Signal Processing \& AWG Layer ($300\text{ K}$ Rackmount):} RFSoC (Radio Frequency System-on-Chip) and UltraScale+ FPGA chassis house Direct Digital Synthesizers (DDS), Arbitrary Waveform Generators (AWGs) operating at $14\text{ GS/s}$ with 14-bit vertical resolution, and Analog-to-Digital Converters (ADCs) for dispersive readout demodulation.
+    \item \textbf{Cryogenic Signal Conditioning Stages ($50\text{ K} \to 4\text{ K} \to 800\text{ mK} \to 100\text{ mK} \to 15\text{ mK}$):} Semi-rigid stainless steel, cupronickel, and superconducting niobium-titanium (NbTi) coaxial cables route microwave signals through stepped attenuators (typically $-20\text{ dB}$ at $4\text{ K}$, $-20\text{ dB}$ at $100\text{ mK}$, and $-20\text{ dB}$ at $15\text{ mK}$) to thermalize blackbody radiation photons to the base stage.
+    \item \textbf{Quantum Processing Core ($15\text{ mK}$ Mixing Chamber):} Superconducting transmon chips fabricated on silicon or sapphire substrates interact via planar coplanar waveguide (CPW) resonators, readout feedlines, and inter-cryostat optical/microwave quantum transducers.
+\end{itemize}
 
 % ==============================================================================
 \section{Quantum Intermediate Representation (QIR) Lowering}
 \label{sec:qir_lowering}
 % ==============================================================================
 
-**QIR** is an LLVM-based intermediate representation established by the QIR Alliance. It expresses quantum instructions as standard LLVM IR function calls into an abstract Quantum Runtime (QIS).
+\keyterm{QIR} is an LLVM-based intermediate representation established by the QIR Alliance. It expresses quantum instructions as standard LLVM IR function calls into an abstract Quantum Runtime (QIS).
 
 \subsection{DQC QIR Extensions for Distributed Execution}
 Standard QIR specifies functions only for local gates (e.g., \texttt{\_\_quantum\_\_qis\_\_cnot}). To support multi-QPU execution, the DQC compiler extends the runtime interface with distributed primitives:
 \begin{enumerate}
-    \item \texttt{\_\_dqc\_\_rt\_\_epr\_alloc(i32 \%src\_qpu, i32 \%dst\_qpu) -> \%EPRHandle*}: Non-blocking request to allocate an entangled pair.
-    \item \texttt{\_\_dqc\_\_rt\_\_teleport\_send(i32 \%dst\_qpu, \%Qubit* \%q\_ctrl, \%EPRHandle* \%epr) -> i1}: Executes local CNOT into EPR ancilla, measures, and initiates RDMA transmission of measurement bit $m_1$.
-    \item \texttt{\_\_dqc\_\_rt\_\_teleport\_recv(i32 \%src\_qpu, \%Qubit* \%q\_tgt, \%EPRHandle* \%epr)}: Awaits measurement packet from sending QPU and applies conditional $\sigma_x^{m_1}$ correction.
+    \item \texttt{\_\_dqc\_\_rt\_\_epr\_alloc(i32 \%src, i32 \%dst) -> \%EPRHandle*}: Non-blocking request to allocate an entangled pair.
+    \item \texttt{\_\_dqc\_\_rt\_\_teleport\_send(i32 \%dst, \%Qubit* \%q, \%EPRHandle* \%epr) -> i1}: Executes local CNOT into EPR ancilla, measures, and initiates RDMA transmission of measurement bit $m_1$.
+    \item \texttt{\_\_dqc\_\_rt\_\_teleport\_recv(i32 \%src, \%Qubit* \%q, \%EPRHandle* \%epr)}: Awaits measurement packet from sending QPU and applies conditional $\sigma_x^{m_1}$ correction.
 \end{enumerate}
 
-\begin{lstlisting}[language=MLIR, caption={Generated QIR LLVM Assembly for Distributed CNOT Receiver}]
+\begin{lstlisting}[language=MLIR, caption={Lowered QIR LLVM Assembly for Distributed CNOT Receiver}]
 ; Lowered QIR LLVM IR for QPU 1 (Target Node)
-define void @execute_nonlocal_cnot(%Qubit* %q_target, %EPRHandle* %epr) {
+%Qubit = type opaque
+%Result = type opaque
+%EPRHandle = type opaque
+
+declare void @__quantum__qis__cnot(%Qubit*, %Qubit*)
+declare void @__quantum__qis__h(%Qubit*)
+declare %Result* @__quantum__qis__mz(%Qubit*)
+declare i1 @__quantum__rt__result_get_bool(%Result*)
+declare %EPRHandle* @__dqc__rt__epr_alloc(i32, i32)
+declare void @__dqc__rt__teleport_recv(i32, %Qubit*, %EPRHandle*)
+
+define void @main() #0 {
 entry:
-  ; 1. Local CNOT between EPR ancilla and target data qubit
-  %ancilla_qubit = call %Qubit* @__dqc__rt__get_epr_qubit(%EPRHandle* %epr)
-  call void @__quantum__qis__cnot(%Qubit* %ancilla_qubit, %Qubit* %q_target)
+  ; Allocate physical qubits on QPU 1
+  %q_target = call %Qubit* @__quantum__rt__qubit_allocate()
   
-  ; 2. Hadamard and measurement on EPR ancilla for phase kickback
-  call void @__quantum__qis__h(%Qubit* %ancilla_qubit)
-  %kickback_bit = call %Result* @__quantum__qis__mz(%Qubit* %ancilla_qubit)
+  ; Await EPR pair allocation from QPU 0 (non-blocking handle)
+  %epr_link = call %EPRHandle* @__dqc__rt__epr_alloc(i32 0, i32 1)
   
-  ; 3. Fast RDMA send of kickback bit back to QPU 0
-  call void @__dqc__rt__send_classical_bit(i32 0, %Result* %kickback_bit)
+  ; Execute non-local telegate receiver logic (applies fix-up X^m1)
+  call void @__dqc__rt__teleport_recv(i32 0, %Qubit* %q_target, %EPRHandle* %epr_link)
   
-  ; 4. Await forward measurement bit m1 from QPU 0
-  %m1 = call i1 @__dqc__rt__await_classical_bit(i32 0)
-  br i1 %m1, label %apply_x, label %done
-
-apply_x:
-  call void @__quantum__qis__x(%Qubit* %q_target)
-  br label %done
-
-done:
   ret void
 }
 \end{lstlisting}
 
 % ==============================================================================
-\section{Microwave Pulse Synthesis: DRAG Waveforms}
-\label{sec:microwave_pulse_synthesis}
+\section{Distributed C++ MPI/RDMA Orchestrator Runtime}
+\label{sec:mpi_rdma_orchestrator}
 % ==============================================================================
 
-At the lowest physical layer, gates are microwave pulses driving transmon capacitively coupled transmission lines at the qubit transition frequency $\omega_{01}/2\pi \approx 4\text{--}6\text{ GHz}$.
+Pass 5 translates the distributed quantum circuit DAG into an asynchronous classical orchestration program that coordinates hardware actions across multiple server nodes driving separate QPUs.
 
-\subsection{The Derivative Removal by Adiabatic Gate (DRAG) Technique}
-Short pulses ($\tau < 20\text{ ns}$) have broad spectral bandwidths that inadvertently drive unwanted transitions from the computational state $\ket{1}$ to the higher-energy leakage state $\ket{2}$ due to the weak anharmonicity of transmon qubits ($\Delta = \omega_{12} - \omega_{01} \approx -300\text{ MHz}$).
+\begin{algorithmbox}{Listing: Distributed Quantum Orchestrator Runtime in C++ / RoCEv2}
+\begin{lstlisting}[language=C++, basicstyle=\ttfamily\scriptsize]
+#include <infiniband/verbs.h>
+#include <mpi.h>
+#include <atomic>
+#include <chrono>
+#include <iostream>
+#include <vector>
 
-To eliminate leakage, the compiler synthesizes **DRAG (Derivative Removal by Adiabatic Gate)** pulse envelopes. The drive signal $\mathcal{E}(t) = I(t)\cos(\omega_d t) + Q(t)\sin(\omega_d t)$ uses quadrature components:
+// Fast lock-free circular ring buffer for real-time FPGA feedforward
+template <typename T, size_t Capacity>
+class LockFreeRingBuffer {
+private:
+    T buffer_[Capacity];
+    std::atomic<size_t> head_{0};
+    std::atomic<size_t> tail_{0};
+public:
+    bool push(const T& item) {
+        size_t current_tail = tail_.load(std::memory_order_relaxed);
+        size_t next_tail = (current_tail + 1) % Capacity;
+        if (next_tail == head_.load(std::memory_order_acquire)) {
+            return false; // Queue full
+        }
+        buffer_[current_tail] = item;
+        tail_.store(next_tail, std::memory_order_release);
+        return true;
+    }
+
+    bool pop(T& item) {
+        size_t current_head = head_.load(std::memory_order_relaxed);
+        if (current_head == tail_.load(std::memory_order_acquire)) {
+            return false; // Queue empty
+        }
+        item = buffer_[current_head];
+        head_.store((current_head + 1) % Capacity, std::memory_order_release);
+        return true;
+    }
+};
+
+// Orchestrator Node Engine for QPU Controller
+class DistributedQPUOrchestrator {
+private:
+    int rank_;
+    int num_nodes_;
+    struct ibv_context* ib_ctx_;
+    struct ibv_pd* pd_;
+    struct ibv_cq* cq_;
+    struct ibv_qp* qp_;
+    LockFreeRingBuffer<uint8_t, 1024> fast_feedforward_queue_;
+
+public:
+    DistributedQPUOrchestrator(int rank, int num_nodes) 
+        : rank_(rank), num_nodes_(num_nodes) {
+        std::cout << "[Orchestrator] Initializing node " << rank_ 
+                  << " of " << num_nodes_ << " with RoCEv2 RDMA.\n";
+    }
+
+    // Executes Non-Local Gate Teleportation Sender Handshake
+    void execute_telegate_send(int target_node, int local_qubit_id, uint64_t epr_pair_id) {
+        // 1. Trigger local FPGA to execute CNOT(local_qubit, epr_ancilla) and Measure
+        uint8_t measurement_m1 = hardware_fpga_cnot_measure(local_qubit_id);
+
+        // 2. Post zero-copy RDMA write to target QPU controller memory
+        post_rdma_measurement_bit(target_node, epr_pair_id, measurement_m1);
+
+        // 3. Log handshake for provenance
+        std::cout << "[Node " << rank_ << "] Sent bit m1=" << (int)measurement_m1 
+                  << " for EPR " << epr_pair_id << " to Node " << target_node << "\n";
+    }
+
+    // Executes Non-Local Gate Teleportation Receiver Handshake
+    void execute_telegate_recv(int source_node, int local_qubit_id, uint64_t epr_pair_id) {
+        // 1. Spin-wait on RDMA incoming buffer with sub-microsecond timeout
+        uint8_t received_m1 = 0;
+        auto start_time = std::chrono::high_resolution_clock::now();
+        while (!poll_rdma_buffer(epr_pair_id, received_m1)) {
+            auto now = std::chrono::high_resolution_clock::now();
+            if (std::chrono::duration_cast<std::chrono::microseconds>(now - start_time).count() > 50) {
+                std::cerr << "[CRITICAL] Telegate timeout! Qubit decoherence threshold exceeded.\n";
+                break;
+            }
+        }
+
+        // 2. Feed measurement bit into FPGA fast feedforward path for Pauli-X fixup
+        if (received_m1 == 1) {
+            hardware_fpga_apply_pauli_x(local_qubit_id);
+        }
+    }
+
+private:
+    uint8_t hardware_fpga_cnot_measure(int q_id) {
+        // Mock FPGA memory-mapped I/O register trigger
+        return 1;
+    }
+    void hardware_fpga_apply_pauli_x(int q_id) {
+        // Mock FPGA real-time pulse playback trigger
+    }
+    void post_rdma_measurement_bit(int dst, uint64_t epr_id, uint8_t bit) {
+        // ibv_post_send() wrapper for RDMA Write with Immediate
+    }
+    bool poll_rdma_buffer(uint64_t epr_id, uint8_t& out_bit) {
+        out_bit = 1;
+        return true;
+    }
+};
+\end{lstlisting}
+\end{algorithmbox}
+
+Table~\ref{tab:classical_feedforward_latency_budget} provides the detailed physical latency breakdown for inter-cryostat classical feedforward coordination.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Classical Feedforward Latency Budget for Inter-Cryostat Telegate Execution.}
+\label{tab:classical_feedforward_latency_budget}
+\begin{tabular}{llr}
+\toprule
+\textbf{Subsystem Phase} & \textbf{Physical Mechanism} & \textbf{Latency (ns)} \\
+\midrule
+Dispersive Readout & Cavity ring-up, ring-down, and ADC integration & $300.0$ \\
+FPGA Demodulation & Digital IQ mixer, matched filter, and discriminator & $45.0$ \\
+Network Serialization & FPGA Aurora 64B/66B line encoder & $14.5$ \\
+Optical Transit ($10\text{ m}$) & Single-mode fiber propagation ($5.0\text{ ns/m}$) & $50.0$ \\
+Network Deserialization & Remote FPGA Aurora receiver and barrel shifter & $16.0$ \\
+Conditional Logic & Pauli-X/Z lookup table decode & $4.0$ \\
+AWG Trigger & Direct Digital Synthesizer (DDS) phase accumulator update & $8.5$ \\
+Microwave Transit ($3\text{ m}$) & Stainless steel coaxial line down dilution fridge & $15.0$ \\
+\midrule
+\textbf{Total Latency} & \textbf{Classical Decision Window ($\Delta \tau_{\text{feedforward}}$)} & \textbf{$\mathbf{453.0\text{ ns}}$} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ==============================================================================
+\section{OpenQASM 3.0 Distributed Syntax and Pulse Calibration}
+\label{sec:openqasm_lowering}
+% ==============================================================================
+
+For backends consuming high-level text formats, DQC emits \keyterm{OpenQASM 3.0} extended with distributed pragmas, communication channels, and low-level \texttt{defcal} pulse calibration blocks:
+
+\begin{lstlisting}[language=MLIR, caption={Distributed OpenQASM 3.0 Specification with Defcal Pulse Calibration}]
+OPENQASM 3.0;
+include "stdgates.inc";
+
+// Distributed Hardware Topology Pragma
+#pragma dqc cluster(nodes=2, interconnect="optical_mems")
+#pragma dqc placement(q[0]=qpu0.phys[2], q[1]=qpu1.phys[5])
+
+// Hardware Port and Frame Definitions
+port d0_port;
+port d1_port;
+frame d0_frame = newframe(d0_port, 5.02e9, 0.0);
+frame d1_frame = newframe(d1_port, 4.88e9, 0.0);
+
+// Calibrated DRAG Pulse Definition for QPU 0 Pi-Pulse
+defcal x $0 {
+    waveform drag_wf = drag(duration=20ns, amp=0.45, sigma=5ns, beta=-0.52);
+    play(d0_frame, drag_wf);
+}
+
+// Distributed Entanglement Link and Classical Channels
+link epr_link = new_entanglement_link(node0=0, node1=1);
+channel[bit] c_channel;
+
+qubit[2] q;
+bit[2] c;
+
+// Initialize Superposition on QPU 0
+h q[0];
+
+// Distributed Telegate Protocol Block
+barrier q[0], q[1];
+#pragma dqc telegate(kind="CNOT", src=0, dst=1, fid_target=0.96)
+epr_pair ep = allocate_epr(epr_link);
+
+// Sender Protocol (QPU 0)
+cnot q[0], ep.qubit_a;
+h q[0];
+c[0] = measure q[0];
+c_channel.send(dst=1, val=c[0]);
+
+// Receiver Protocol (QPU 1)
+bit remote_c = c_channel.receive(src=0);
+if (remote_c == 1) {
+    x q[1];
+}
+cnot ep.qubit_b, q[1];
+
+// Final Measurement
+c[1] = measure q[1];
+\end{lstlisting}
+
+% ==============================================================================
+\section{Microwave Pulse Synthesis: DRAG and Cross-Resonance Derivations}
+\label{sec:drag_pulse_synthesis}
+% ==============================================================================
+
+At the lowest layer of the control stack, single-qubit rotations and two-qubit entangling operations are implemented by applying modulated microwave drive pulses $V(t) = I(t)\cos(\omega_d t) + Q(t)\sin(\omega_d t)$ to transmon capacitively coupled drive and cross-resonance lines.
+
+\subsection{Phase-Space Leakage in Weakly Anharmonic Transmons}
+A transmon is a weakly anharmonic oscillator described in the truncated three-level basis by the Hamiltonian:
+\begin{equation}
+    \hat{\mathcal{H}}_0 = \omega_{01} \ket{1}\bra{1} + (2\omega_{01} + \Delta) \ket{2}\bra{2},
+    \label{eq:transmon_3level_hamiltonian_ch12}
+\end{equation}
+where $\Delta = \omega_{12} - \omega_{01} \approx -2\pi \times 300\text{ MHz}$ represents the negative anharmonicity governed by the single-electron charging energy $\Delta \approx -E_C / \hbar$.
+
+When driven by a classical microwave tone $\Omega(t) = I(t)\cos(\omega_d t) + Q(t)\sin(\omega_d t)$ tuned on resonance with the computational transition ($\omega_d = \omega_{01}$), the interaction Hamiltonian in the multi-level rotating frame is:
+\begin{equation}
+    \hat{\mathcal{H}}_{\text{rot}}(t) = \Delta \ket{2}\bra{2} + \frac{\Omega_x(t)}{2}\left( \ket{0}\bra{1} + \sqrt{2}\ket{1}\bra{2} + \text{h.c.} \right) + \frac{\Omega_y(t)}{2}\left( -i\ket{0}\bra{1} - i\sqrt{2}\ket{1}\bra{2} + \text{h.c.} \right),
+    \label{eq:transmon_rotating_interaction_hamiltonian}
+\end{equation}
+where $\Omega_x(t) = I(t)$ and $\Omega_y(t) = Q(t)$.
+
+If a standard Gaussian envelope $\Omega_x(t) = A e^{-t^2 / 2\sigma^2}$ is driven with a short gate duration $\tau_p \le 20\text{ ns}$, its Fourier frequency width overlaps with the forbidden $\ket{1} \leftrightarrow \ket{2}$ transition at $\omega_{01} + \Delta$, causing severe \keyterm{state leakage} into non-computational states $\ket{2}$.
+
+\subsection{Schrieffer-Wolff Derivation of DRAG Correction}
+The \keyterm{DRAG (Derivative Removal by Adiabatic Gate)} technique eliminates state leakage to first order in $\Omega / \Delta$ through a time-dependent Schrieffer-Wolff transformation $\hat{U}(t) = \exp(-i\hat{S}(t))$.
+
+To eliminate transitions to the second excited state $\ket{2}$, the generator $\hat{S}(t)$ is constructed to cancel off-diagonal matrix elements between $\ket{1}$ and $\ket{2}$. Expanding the effective Hamiltonian in the transformed frame $\hat{\mathcal{H}}_{\text{eff}} = \hat{U}^\dagger \hat{\mathcal{H}} \hat{U} - i\hat{U}^\dagger \dot{\hat{U}}$ yields:
 \begin{align}
-    I(t) &= \Omega(t) = A \cdot \exp\left( -\frac{(t - \tau/2)^2}{2\sigma^2} \right) - B, \label{eq:drag_i} \\
-    Q(t) &= -\frac{1}{\Delta} \frac{d\Omega(t)}{dt} = \frac{(t - \tau/2)}{\Delta \sigma^2} \Omega(t), \label{eq:drag_q}
+    I(t) &= \Omega(t) = A \left( \cos\left(\frac{\pi t}{\tau_p}\right) - 1 \right), \label{eq:drag_in_phase_ch12} \\
+    Q(t) &= -\frac{\dot{\Omega}(t)}{\Delta} = \beta \frac{d\Omega(t)}{dt}, \quad \text{where } \beta = -\frac{1}{\Delta}. \label{eq:drag_quadrature_ch12}
 \end{align}
-where $A$ is calibrated to yield a precise rotation angle ($\pi/2$ or $\pi$), and the out-of-phase quadrature $Q(t)$ destructively interferes with transitions to the $\ket{2}$ state.
+
+Furthermore, to correct for the dynamic Stark frequency shift induced by the drive on the $\ket{0} \leftrightarrow \ket{1}$ transition, the instantaneous drive frequency must be detuned according to:
+\begin{equation}
+    \delta \omega_d(t) = \frac{\Omega(t)^2 (1 - \lambda^2)}{4\Delta} = -\frac{\Omega(t)^2}{4\Delta},
+    \label{eq:drag_stark_detuning_ch12}
+\end{equation}
+where $\lambda = \sqrt{2}$ is the matrix element ratio between the $\ket{1}\leftrightarrow\ket{2}$ and $\ket{0}\leftrightarrow\ket{1}$ transitions.
 
 \begin{figure}[htbp]
     \centering
     \begin{tikzpicture}[scale=0.92, >=stealth]
         % Axes
-        \draw[->, line width=1pt] (-4.5, 0) -- (4.5, 0) node[right, font=\small] {Time $t$ (ns)};
-        \draw[->, line width=1pt] (0, -2.2) -- (0, 2.8) node[above, font=\small] {Pulse Amplitude};
+        \draw[->, line width=1pt] (-4.5, 0) -- (4.5, 0) node[right, font=\footnotesize\bfseries] {Time $t$ (ns)};
+        \draw[->, line width=1pt] (0, -2.2) -- (0, 2.5) node[above, font=\footnotesize\bfseries] {Pulse Amplitude (a.u.)};
         
-        % In-phase Gaussian envelope (I quadrature)
-        \draw[color=compilerteal, line width=2pt, smooth, domain=-3.5:3.5] 
-            plot (\x, {2.2*exp(-\x*\x/2)});
-        \node[font=\footnotesize\bfseries\color{compilerteal}] at (2.5, 2.0) {In-Phase $I(t)$ (Gaussian)};
+        % In-phase Gaussian/Cosine envelope I(t)
+        \draw[line width=2pt, color=darkblue, domain=-3.5:3.5, samples=100] 
+            plot (\x, {2.0 * exp(-\x*\x / 2.0)});
+        \node[font=\footnotesize\bfseries\color{darkblue}, above] at (2.2, 1.4) {$I(t) = \Omega(t)$ (In-Phase)};
         
-        % Quadrature Derivative envelope (Q quadrature)
-        \draw[color=red!80!black, line width=1.8pt, dashed, smooth, domain=-3.5:3.5] 
-            plot (\x, {-1.5*\x*exp(-\x*\x/2)});
-        \node[font=\footnotesize\bfseries\color{red!80!black}] at (-2.5, 1.5) {Derivative $Q(t) \propto -\dot{I}/\Delta$};
+        % Quadrature derivative envelope Q(t)
+        \draw[line width=2pt, color=cautionred, dashed, domain=-3.5:3.5, samples=100] 
+            plot (\x, {-1.5 * \x * exp(-\x*\x / 2.0)});
+        \node[font=\footnotesize\bfseries\color{cautionred}, below] at (2.2, -1.1) {$Q(t) = -\frac{\dot{\Omega}(t)}{\Delta}$ (Quadrature)};
         
-        % Zero crossing annotation
-        \draw (0, 0) node[below right, font=\tiny] {$t=\tau/2$};
-        \draw (-3.5, 0) node[below, font=\tiny] {$0\text{ ns}$};
-        \draw (3.5, 0) node[below, font=\tiny] {$20\text{ ns}$};
+        % Annotations
+        \draw[<->, line width=1pt] (-3.5, -0.3) -- (3.5, -0.3);
+        \node[font=\scriptsize\bfseries, fill=white] at (0, -0.3) {Pulse Duration $\tau_p = 20\text{ ns}$};
     \end{tikzpicture}
-    \caption{The synthesized DRAG microwave pulse envelope for a $20\text{ ns}$ single-qubit rotation. The in-phase Gaussian envelope $I(t)$ drives the target rotation, while the derivative quadrature $Q(t)$ suppresses phase errors and eliminates leakage into the non-computational $\ket{2}$ state.}
-    \label{fig:drag_pulse_shape}
+    \caption{DRAG pulse synthesis waveform for a $20\text{ ns}$ single-qubit $X_\pi$ rotation. The in-phase envelope $I(t)$ drives the rotation, while the quadrature derivative $Q(t) \propto -\dot{\Omega}(t)/\Delta$ suppresses leakage into the $\ket{2}$ state by $28\text{ dB}$.}
+    \label{fig:drag_pulse_waveform_ch12}
 \end{figure}
 
-By integrating DRAG synthesis directly into Pass 5, the DQC compiler provides a seamless, verifiable bridge from high-level distributed quantum algorithms down to calibrated hardware microwave waveforms.
+\subsection{Cross-Resonance (CR) Hamiltonian and Stark Shift Cancellation}
+For two-qubit entangling gates on fixed-frequency transmons, DQC lowers CNOT operations into \keyterm{Cross-Resonance (CR)} pulses. By applying a microwave drive to the control qubit $Q_c$ at the transition frequency of the target qubit $\omega_t$ ($\omega_d = \omega_t$), the static capacitive coupling $J$ generates an effective $ZX$ interaction Hamiltonian:
+\begin{equation}
+    \hat{\mathcal{H}}_{\text{CR}} = \frac{\mu_{ZX}}{2} (\hat{\sigma}_z \otimes \hat{\sigma}_x) + \frac{\mu_{ZI}}{2} (\hat{\sigma}_z \otimes \hat{I}) + \frac{\mu_{IX}}{2} (\hat{I} \otimes \hat{\sigma}_x) + \frac{\mu_{ZZ}}{2} (\hat{\sigma}_z \otimes \hat{\sigma}_z),
+    \label{eq:cr_hamiltonian_ch12}
+\end{equation}
+where the desired entangling rate $\mu_{ZX}$ is given by:
+\begin{equation}
+    \mu_{ZX} \approx \frac{J \Omega_d}{\Delta_{ct}} \frac{\Delta_t}{\Delta_{ct} + \Delta_t},
+    \label{eq:cr_rate_derivation}
+\end{equation}
+with detuning $\Delta_{ct} = \omega_c - \omega_t$ and target anharmonicity $\Delta_t$.
+
+To eliminate the parasitic single-qubit Stark shift terms $\mu_{ZI}$ and $\mu_{IX}$, DQC generates an \keyterm{Echoed Cross-Resonance (ECR)} sequence:
+\begin{equation}
+    \text{ECR} = \left[ \text{CR}^+(\tau_p / 2) \right] \cdot \left[ \hat{X}_c \otimes \hat{I}_t \right] \cdot \left[ \text{CR}^-(\tau_p / 2) \right] \cdot \left[ \hat{X}_c \otimes \hat{I}_t \right],
+    \label{eq:ecr_sequence_ch12}
+\end{equation}
+which inverts the sign of the control qubit state between the two halves of the drive, perfectly canceling all static $ZI$ and $IX$ terms while constructively accumulating the target $\frac{\pi}{4}(\hat{\sigma}_z \otimes \hat{\sigma}_x)$ entangling angle required for CNOT synthesis.
+
+% ==============================================================================
+\section{Sub-Nanosecond Clock Synchronization: The White Rabbit Protocol}
+\label{sec:white_rabbit_sync}
+% ==============================================================================
+
+In distributed quantum compilers, telegate fidelity depends on sub-nanosecond synchronization. If the master FPGA clock on QPU 0 drifts relative to QPU 1 by $\Delta t_{\text{jitter}} = 1\text{ ns}$, the rotating frame phase error $\Delta \phi = \omega_q \Delta t_{\text{jitter}} \approx 2\pi \times (5\text{ GHz}) \times (1\text{ ns}) = 10\pi\text{ rad}$ completely scrambles quantum state coherence!
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.9, >=stealth]
+        % Master Node (QPU 0)
+        \draw[line width=1.2pt] (-4.5, 3.5) -- (-4.5, -1.5);
+        \node[font=\footnotesize\bfseries\color{darkblue}, above] at (-4.5, 3.5) {Master Node (QPU 0)};
+        
+        % Slave Node (QPU 1)
+        \draw[line width=1.2pt] (4.5, 3.5) -- (4.5, -1.5);
+        \node[font=\footnotesize\bfseries\color{compilerteal}, above] at (4.5, 3.5) {Slave Node (QPU 1)};
+        
+        % Message 1: Sync
+        \draw[->, line width=1.2pt, color=darkblue] (-4.5, 2.8) -- node[above, font=\scriptsize] {$\text{Sync}(t_1)$} (4.5, 2.0);
+        \node[font=\tiny, left] at (-4.5, 2.8) {$t_1$};
+        \node[font=\tiny, right] at (4.5, 2.0) {$t_2$};
+        
+        % Message 2: Follow Up
+        \draw[->, line width=1pt, dashed, color=darkblue] (-4.5, 1.4) -- node[above, font=\scriptsize] {$\text{Follow\_Up}(t_1)$} (4.5, 0.9);
+        
+        % Message 3: Delay Request
+        \draw[<-, line width=1.2pt, color=compilerteal] (-4.5, -0.3) -- node[above, font=\scriptsize] {$\text{Delay\_Req}(t_3)$} (4.5, 0.3);
+        \node[font=\tiny, right] at (4.5, 0.3) {$t_3$};
+        \node[font=\tiny, left] at (-4.5, -0.3) {$t_4$};
+        
+        % Message 4: Delay Response
+        \draw[->, line width=1pt, dashed, color=darkblue] (-4.5, -0.9) -- node[above, font=\scriptsize] {$\text{Delay\_Resp}(t_4)$} (4.5, -1.3);
+    \end{tikzpicture}
+    \caption{White Rabbit PTP four-message synchronization exchange. Timestamps $t_1, t_2, t_3, t_4$ allow the slave FPGA to determine the round-trip propagation delay $\delta = \frac{(t_2 - t_1) + (t_4 - t_3)}{2}$ and the clock offset $\Delta t_{\text{offset}} = \frac{(t_2 - t_1) - (t_4 - t_3)}{2}$ with $< 10\text{ ps}$ precision.}
+    \label{fig:white_rabbit_message_exchange}
+\end{figure}
+
+To lock all cryostat controllers, DQC architectures integrate the \keyterm{White Rabbit} extension of IEEE 1588 Precision Time Protocol:
+\begin{enumerate}
+    \item \textbf{Synchronous Ethernet (SyncE):} Locks physical layer transceiver clocks to a master $125\text{ MHz}$ reference.
+    \item \textbf{Digital Dual-Mixer Time Difference (DDMTD):} Measures round-trip optical phase delay with sub-picosecond resolution.
+    \item \textbf{Phase-Locked Loop (PLL) Calibration:} Dynamically tunes FPGA Digital Clock Managers (DCMs), keeping inter-cryostat clock skew below $\Delta t_{\text{skew}} < 10\text{ picoseconds}$.
+\end{enumerate}
+
+\subsection{Phase Drift and Quantum Fidelity Degradation}
+The accumulated phase error $\Delta \phi$ between two uncoupled oscillators drifting at frequencies $\omega_1(t)$ and $\omega_2(t)$ is given by:
+\begin{equation}
+    \Delta \phi(t) = \int_0^t \left( \omega_1(\tau) - \omega_2(\tau) \right) d\tau + \Delta \phi_0.
+    \label{eq:phase_drift_integral}
+\end{equation}
+
+For a single-qubit state $\ket{\psi} = \frac{1}{\sqrt{2}}(\ket{0} + \ket{1})$, an uncompensated phase drift $\Delta \phi$ degrades state fidelity according to:
+\begin{equation}
+    \mathcal{F}(\Delta \phi) = \left| \bra{\psi} e^{-i \frac{\Delta \phi}{2} \hat{\sigma}_z} \ket{\psi} \right|^2 = \cos^2\left(\frac{\Delta \phi}{2}\right) \approx 1 - \frac{(\Delta \phi)^2}{4}.
+    \label{eq:fidelity_vs_phase_drift}
+\end{equation}
+Requiring $\mathcal{F} \ge 0.9999$ imposes a maximum tolerable phase drift of $|\Delta \phi| \le 0.02\text{ radians}$. At a qubit transition frequency of $\omega_q / 2\pi = 5.0\text{ GHz}$, this constrains the maximum allowable timing skew to:
+\begin{equation}
+    \Delta t_{\text{skew}}^{\text{max}} = \frac{|\Delta \phi|}{\omega_q} = \frac{0.02}{2\pi \times 5.0 \times 10^9\text{ s}^{-1}} \approx 6.37 \times 10^{-13}\text{ s} = 637\text{ femtoseconds},
+    \label{eq:sub_picosecond_timing_bound}
+\end{equation}
+which is achieved in practice through hardware phase tracking registers inside the RFSoC digital demodulator cores.
+
+% ==============================================================================
+% CHAPTER SUMMARY
+% ==============================================================================
+
+\begin{summarybox}{Key Invariants of Chapter 12}
+\begin{enumerate}
+    \item \textbf{Heterogeneous Emission:} Pass 5 splits scheduled DQC IR into per-QPU QIR LLVM bitcode, OpenQASM 3.0 files with \texttt{defcal} blocks, and C++ RoCEv2 orchestrators.
+    \item \textbf{QIR Distributed Runtime:} Custom runtime primitives (\texttt{\_\_dqc\_\_rt\_\_epr\_alloc}, \texttt{\_\_dqc\_\_rt\_\_teleport\_send}) manage non-blocking link handshakes.
+    \item \textbf{DRAG Leakage Suppression:} Adding quadrature derivative drive $Q(t) = -\dot{\Omega}(t)/\Delta$ eliminates $\ket{2}$-state leakage in fast ($20\text{ ns}$) microwave pulses.
+    \item \textbf{Cross-Resonance Entangling:} Microwave driving of control transmons at target frequencies synthesizes effective $ZX$ Hamiltonians, corrected via Echoed Cross-Resonance (ECR).
+    \item \textbf{Sub-Nanosecond Time Locking:} The White Rabbit protocol synchronizes distributed AWG controllers to $<10\text{ ps}$ phase jitter, preserving rotating reference frames.
+\end{enumerate}
+\end{summarybox}
+
+% ==============================================================================
+% EXERCISES
+% ==============================================================================
+
+\section*{Exercises}
+\addcontentsline{toc}{section}{Exercises}
+
+\begin{enumerate}[label=\textbf{12.\arabic*.}]
+    \item \textbf{QIR Function Signatures.} Write the complete LLVM IR type signature for a non-blocking EPR pair allocation function returning a custom struct pointer containing node IDs and link timestamps.
+    \item \textbf{DRAG Parameter Calculation.} For a transmon with $\omega_{01} = 2\pi \times 5.0\text{ GHz}$ and anharmonicity $\Delta = -2\pi \times 320\text{ MHz}$, compute the optimal DRAG derivative scaling factor $\beta$.
+    \item \textbf{Rotating Frame Phase Drift.} If the clock skew between two cryostats is $\Delta t = 25\text{ ps}$ on a $4.8\text{ GHz}$ transmon, calculate the accumulated phase drift $\Delta \phi$ and the resulting single-qubit gate error $\epsilon = \sin^2(\Delta \phi / 2)$.
+    \item \textbf{OpenQASM 3.0 Defcal Block.} Write an OpenQASM 3.0 \texttt{defcal} block defining a custom pulse waveform for a calibrated non-local tele-CNOT gate across QPUs.
+    \item \textbf{White Rabbit PTP Message Flow.} Draw the 4-message PTP exchange diagram ($\text{Sync}, \text{Follow\_Up}, \text{Delay\_Req}, \text{Delay\_Resp}$) and write the formula for round-trip path delay.
+    \item \textbf{AWG Sampling Rate Constraints.} If a DAC operates at $14\text{ GS/s}$ with 14-bit resolution, calculate the maximum Nyquist frequency and the time quantization step size for pulse generation.
+    \item \textbf{RDMA Latency Budget.} An FPGA transmits a 1-bit measurement outcome to a remote FPGA over a $10\text{ m}$ fiber link. Calculate the total latency breakdown (FPGA serialization, optical transit, deserialization, and fix-up actuation).
+    \item \textbf{State Leakage Simulation.} Numerically integrate the 3-level transmon Hamiltonian under a $15\text{ ns}$ Gaussian pulse with and without DRAG correction, and plot the $\ket{2}$ state leakage population versus peak pulse amplitude.
+    \item \textbf{Cross-Resonance Rate Estimation.} Given a transmon coupling $J = 2\pi \times 4.5\text{ MHz}$, detuning $\Delta_{ct} = 2\pi \times 180\text{ MHz}$, target anharmonicity $\Delta_t = -2\pi \times 310\text{ MHz}$, and drive amplitude $\Omega_d = 2\pi \times 35\text{ MHz}$, compute the effective $ZX$ entangling rate $\mu_{ZX}$ and the required ECR pulse duration for a CNOT gate.
+    \item \textbf{Lock-Free Queue Throughput.} Derive the maximum telegate processing throughput (operations per second) of a lock-free circular ring buffer on a $3.2\text{ GHz}$ processor given an atomic compare-and-swap memory latency of $12\text{ ns}$.
+\end{enumerate}

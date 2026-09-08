@@ -2,173 +2,459 @@
 \label{ch:five_pass_pipeline}
 
 \begin{quote}
-\textit{``Compilation is not a monolithic leap from high-level algorithm to hardware pulses; it is an invariant-preserving journey through five progressive transformation stages.''}
+\textit{``A distributed quantum compiler is not a single giant transformation. It is a carefully ordered assembly line, where each station does one job perfectly, and the product becomes more refined at every step.''}
 \end{quote}
 
-The core execution engine of the DQC compiler is structured as a five-stage progressive optimization pipeline implemented using the MLIR \texttt{PassManager} architecture. Each pass addresses a distinct mathematical and physical abstraction layer, enforcing strict preconditions and yielding formal postconditions. 
+% ======================================================================
+% OPENING NARRATIVE
+% ======================================================================
 
-This chapter examines the mechanical inner workings of each of the five compilation passes:
+\section{Introduction: Why Five Passes?}
+
+Think of a modern aerospace manufacturing facility. Raw titanium ingots enter one end, and a flight-certified supersonic aircraft rolls out the other. Between those two points, the airframe passes through an unyielding sequence of specialized stations: precision casting, structural machining, robotic welding, avionics integration, and aerodynamic wind-tunnel certification. Each station possesses a singular responsibility. The structural machining station does not concern itself with radar software calibration. The avionics station does not concern itself with alloy heat treatment. This strict separation of concerns makes the process verifiable, scalable, and physically sound.
+
+The DQC compiler operates under the exact same engineering discipline. A quantum algorithm enters as a high-level representation (OpenQASM 3.0, QIR, or Python AST). A synchronized set of distributed hardware-ready binaries and classical orchestrator programs emerges at the other end. Between those two endpoints, the program advances through five isolated compilation passes, each addressing a distinct mathematical and physical layer:
+
 \begin{enumerate}
-    \item \textbf{Pass 1:} Canonical Ingestion and IR Normalization
-    \item \textbf{Pass 2:} Hypergraph Extraction and Balanced Multi-QPU Partitioning
-    \item \textbf{Pass 3:} Non-Local Teleportation and Cat-State Synthesis
-    \item \textbf{Pass 4:} Coherence-Aware DAG Scheduling and Latency Hiding
-    \item \textbf{Pass 5:} Distributed Target Lowering and Runtime Code Generation
+    \item \textbf{Pass 1: Canonical Ingestion and Normalization.} Ingest raw AST, reduce arbitrary gate sets to canonical universal bases, eliminate redundant self-inverse operators, merge continuous rotation angles, and verify linear SSA constraints.
+    \item \textbf{Pass 2: Topological Hypergraph Partitioning.} Extract circuit interaction hypergraphs, invoke multi-level V-cycle partitioning (KaHyPar) under multi-constraint hardware capacities, and tag operations with spatial QPU affinity attributes.
+    \item \textbf{Pass 3: Non-Local Teleportation Synthesis.} Identify cross-QPU interactions, synthesize optimal gate teleportation protocols (EJPP, KAK 3-ebit decomposition, Cat-broadcasting), and insert real-time classical feedforward fixup logic.
+    \item \textbf{Pass 4: Decoherence-Aware DAG Scheduling.} Build dependency DAGs, execute Critical Path Method (CPM) forward/backward slack traversals, enforce Just-In-Time (JIT) entanglement allocation, and synthesize XY4 dynamical decoupling pulse sequences.
+    \item \textbf{Pass 5: Distributed Target Lowering.} Split the scheduled module into per-QPU quantum binaries (QIR / OpenQASM 3.0) and classical MPI/RDMA network orchestration code.
 \end{enumerate}
+
+\begin{insightbox}{Why Progressive Lowering Outperforms Monolithic Compilation}
+A monolithic compiler attempting to perform parsing, spatial placement, routing, pulse scheduling, and code emission in a single pass inevitably produces an unmaintainable codebase. In distributed quantum systems, where physical error rates vary across links and timing jitter is measured in picoseconds, progressive multi-level lowering guarantees:
+\begin{itemize}
+    \item \textbf{Formal Entry/Exit Invariants:} Every pass verifies its input and asserts exact semantic guarantees on its output.
+    \item \textbf{Decoupled Optimization:} The spatial partitioner can be upgraded from KaHyPar to an exact MILP solver without touching the pulse synthesis engine.
+    \item \textbf{Granular Regression Testing:} Intermediate IR states can be isolated and verified using LLVM Lit and FileCheck test suites.
+\end{itemize}
+\end{insightbox}
 
 \begin{figure}[htbp]
     \centering
-    \begin{tikzpicture}[scale=0.88, >=stealth]
-        % Stages Vertical Stack
+    \begin{tikzpicture}[scale=0.84, >=stealth]
+        % Input
+        \node[draw, rectangle, fill=gray!15, rounded corners=2mm, font=\small\bfseries, minimum width=9.5cm, minimum height=0.7cm] (input) at (0, 6.5) {Input: OpenQASM 3.0 / QIR / Qiskit Circuit};
+        
         % Pass 1
-        \draw[rounded corners=2mm, fill=blue!10, draw=darkblue, line width=1pt] (-4.5, 4.2) rectangle (4.5, 5.2);
-        \node[font=\small\bfseries\color{darkblue}] at (0, 4.85) {Pass 1: Canonical Ingestion \& IR Normalization};
-        \node[font=\tiny\color{darkblue}] at (0, 4.45) {Input AST $\to$ Canonical 1Q/2Q Basis, Constant Folding, Peephole Reduction};
+        \draw[rounded corners=2mm, fill=blue!10, draw=darkblue, line width=1pt] (-4.8, 4.8) rectangle (4.8, 5.8);
+        \node[font=\small\bfseries\color{darkblue}] at (0, 5.45) {Pass 1: Canonical Ingestion \& Normalization};
+        \node[font=\tiny\color{darkblue}] at (0, 5.05) {Basis reduction $\to$ Peephole optimization $\to$ Linear SSA verification};
         
         % Pass 2
-        \draw[rounded corners=2mm, fill=blue!15, draw=darkblue, line width=1pt] (-4.5, 2.6) rectangle (4.5, 3.6);
-        \node[font=\small\bfseries\color{darkblue}] at (0, 3.25) {Pass 2: Hypergraph Extraction \& Balanced Partitioning};
-        \node[font=\tiny\color{darkblue}] at (0, 2.85) {Construct $\mathcal{H}=(V, E) \to$ KaHyPar Multi-level Cut $\to$ QPU Attributes Attached};
+        \draw[rounded corners=2mm, fill=blue!15, draw=darkblue, line width=1pt] (-4.8, 3.2) rectangle (4.8, 4.2);
+        \node[font=\small\bfseries\color{darkblue}] at (0, 3.85) {Pass 2: Hypergraph Partitioning};
+        \node[font=\tiny\color{darkblue}] at (0, 3.45) {Build $\mathcal{H}=(V, \mathcal{E})$ $\to$ KaHyPar multi-level cut $\to$ QPU affinity tags};
         
         % Pass 3
-        \draw[rounded corners=2mm, fill=compilerteal!15, draw=compilerteal, line width=1pt] (-4.5, 1.0) rectangle (4.5, 2.0);
-        \node[font=\small\bfseries\color{compilerteal}] at (0, 1.65) {Pass 3: Non-Local Teleportation \& Cat-State Synthesis};
-        \node[font=\tiny\color{compilerteal}] at (0, 1.25) {Cross-Boundary Gates Rewritten $\to$ \texttt{dqc.epr\_alloc} + \texttt{dqc.telegate}};
+        \draw[rounded corners=2mm, fill=compilerteal!15, draw=compilerteal, line width=1pt] (-4.8, 1.6) rectangle (4.8, 2.6);
+        \node[font=\small\bfseries\color{compilerteal}] at (0, 2.25) {Pass 3: Non-Local Teleportation Synthesis};
+        \node[font=\tiny\color{compilerteal}] at (0, 1.85) {Cross-QPU gates $\to$ EPR allocation + Bell measurement + Pauli fix-ups};
         
         % Pass 4
-        \draw[rounded corners=2mm, fill=quantumviolet!15, draw=quantumviolet, line width=1pt] (-4.5, -0.6) rectangle (4.5, 0.4);
-        \node[font=\small\bfseries\color{quantumviolet}] at (0, 0.05) {Pass 4: Coherence-Aware DAG Scheduling};
-        \node[font=\tiny\color{quantumviolet}] at (0, -0.35) {Critical Path DAG $\to$ Classical Latency Hiding $\to$ $T_2^*$ Envelope Check};
+        \draw[rounded corners=2mm, fill=quantumviolet!15, draw=quantumviolet, line width=1pt] (-4.8, 0.0) rectangle (4.8, 1.0);
+        \node[font=\small\bfseries\color{quantumviolet}] at (0, 0.65) {Pass 4: Decoherence-Aware DAG Scheduling};
+        \node[font=\tiny\color{quantumviolet}] at (0, 0.25) {Dependency DAG $\to$ JIT EPR hoisting $\to$ XY4 pulse insertion};
         
         % Pass 5
-        \draw[rounded corners=2mm, fill=green!15, draw=black, line width=1pt] (-4.5, -2.2) rectangle (4.5, -1.2);
-        \node[font=\small\bfseries] at (0, -1.55) {Pass 5: Distributed Target Lowering \& Code Generation};
-        \node[font=\tiny] at (0, -1.95) {Split Module $\to$ Multi-QPU QIR/OpenQASM + Classical MPI Orchestrator};
+        \draw[rounded corners=2mm, fill=examplegreen!15, draw=examplegreen!80!black, line width=1pt] (-4.8, -1.6) rectangle (4.8, -0.6);
+        \node[font=\small\bfseries\color{examplegreen!80!black}] at (0, -0.95) {Pass 5: Distributed Target Lowering};
+        \node[font=\tiny\color{examplegreen!80!black}] at (0, -1.35) {Module split $\to$ Per-QPU QIR binaries + MPI orchestrator};
         
-        % Arrows Between Passes
-        \draw[->, line width=1.5pt, color=darkblue] (0, 4.2) -- (0, 3.6);
-        \draw[->, line width=1.5pt, color=darkblue] (0, 2.6) -- (0, 2.0);
-        \draw[->, line width=1.5pt, color=compilerteal] (0, 1.0) -- (0, 0.4);
-        \draw[->, line width=1.5pt, color=quantumviolet] (0, -0.6) -- (0, -1.2);
+        % Arrows
+        \draw[->, line width=1.5pt, color=gray] (0, 6.1) -- (0, 5.8);
+        \draw[->, line width=1.5pt, color=darkblue] (0, 4.8) -- (0, 4.2);
+        \draw[->, line width=1.5pt, color=darkblue] (0, 3.2) -- (0, 2.6);
+        \draw[->, line width=1.5pt, color=compilerteal] (0, 1.6) -- (0, 1.0);
+        \draw[->, line width=1.5pt, color=quantumviolet] (0, 0.0) -- (0, -0.6);
         
-        % Output Branches
-        \draw[->, line width=1.2pt] (-2.5, -2.2) -- (-2.5, -3.0) node[below, font=\scriptsize, align=center] {QPU 0 Binary\\(\texttt{.qir} / Pulse)};
-        \draw[->, line width=1.2pt] (0, -2.2) -- (0, -3.0) node[below, font=\scriptsize, align=center] {MPI Orchestrator\\(\texttt{.cpp} / RDMA)};
-        \draw[->, line width=1.2pt] (2.5, -2.2) -- (2.5, -3.0) node[below, font=\scriptsize, align=center] {QPU 1 Binary\\(\texttt{.qir} / Pulse)};
+        % Output branches
+        \draw[->, line width=1.2pt] (-3, -1.6) -- (-3, -2.5);
+        \node[font=\scriptsize, align=center, below] at (-3, -2.5) {QPU 0 Binary\\(\texttt{qpu0.qir})};
+        \draw[->, line width=1.2pt] (0, -1.6) -- (0, -2.5);
+        \node[font=\scriptsize, align=center, below] at (0, -2.5) {MPI Orchestrator\\(\texttt{orchestrator.cpp})};
+        \draw[->, line width=1.2pt] (3, -1.6) -- (3, -2.5);
+        \node[font=\scriptsize, align=center, below] at (3, -2.5) {QPU 1 Binary\\(\texttt{qpu1.qir})};
     \end{tikzpicture}
-    \caption{The Five-Pass Compilation Pipeline in DQC. The pipeline transforms high-level monolithic quantum circuits into synchronized, multi-target distributed executables.}
+    \caption{The Five-Pass Progressive Compilation Pipeline. Each pass operates at a distinct level of semantic abstraction, taking a monolithic circuit and progressively emitting multi-QPU quantum binaries and classical network orchestrators.}
     \label{fig:five_pass_dataflow}
 \end{figure}
 
-% ==============================================================================
+% ======================================================================
+% PASS 1: INGESTION
+% ======================================================================
+
 \section{Pass 1: Canonical Ingestion and Normalization}
 \label{sec:pass1_ingestion}
-% ==============================================================================
 
-The ingestion pass parses external input representations (OpenQASM 3.0, QIR bytecode, or high-level algorithm definitions) and emits an unpartitioned monolithic \texttt{dqc} MLIR module.
+\subsection{Architectural Purpose}
+Pass 1 transforms diverse input representations (OpenQASM 3.0, QIR bitcode, Python DAGs) into standardized DQC MLIR. It performs:
+\begin{enumerate}
+    \item \textbf{Basis Reduction:} Translating arbitrary multi-qubit gates into the universal set $\{R_x, R_y, R_z, H, \text{CNOT}, \text{CZ}, \text{Measure}\}$.
+    \item \textbf{Peephole Simplification:} Eliminating self-inverse pairs ($H \cdot H \to \mathbb{I}$, $\text{CNOT} \cdot \text{CNOT} \to \mathbb{I}$).
+    \item \textbf{Continuous Angle Folding:} Combining sequential rotations $R_z(\theta_1) R_z(\theta_2) \to R_z(\theta_1 + \theta_2) \pmod{2\pi}$.
+    \item \textbf{Linear SSA Validation:} Verifying that every qubit handle is consumed exactly once.
+\end{enumerate}
 
-\subsection{Peephole Algebraic Reductions}
-Before partitioning, Pass 1 executes local peephole rewrites to minimize gate depth and eliminate redundant operators. The pass applies standard group-theoretic identities:
-\begin{align}
-    H \cdot H &\to \mathbb{I}, \quad X \cdot X \to \mathbb{I}, \quad Z \cdot Z \to \mathbb{I}, \\
-    R_z(\theta_1) \cdot R_z(\theta_2) &\to R_z(\theta_1 + \theta_2), \\
-    \text{CNOT}(c, t) \cdot \text{CNOT}(c, t) &\to \mathbb{I}.
-\end{align}
+\begin{lstlisting}[language=C++, caption={Pass 1: Canonical Ingestion and Peephole Rewriter (CanonicalizationPass.cpp)}]
+#include "dqc/Passes/Passes.h"
+#include "dqc/DQCOps.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-\begin{passbox}{Pass 1 Mechanics}
-\textbf{Entry Condition:} Raw quantum circuit AST with arbitrary basis gates.\\
+namespace mlir::dqc {
+
+struct EliminateDoubleHadamard : public OpRewritePattern<HOp> {
+  using OpRewritePattern<HOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(HOp op, PatternRewriter &rewriter) const override {
+    auto definingOp = op.getInQubit().getDefiningOp<HOp>();
+    if (!definingOp) return failure();
+
+    // Replace uses of second H with input to first H (H . H = I)
+    rewriter.replaceOp(op, definingOp.getInQubit());
+    return success();
+  }
+};
+
+struct MergeConsecutiveRotations : public OpRewritePattern<RotOp> {
+  using OpRewritePattern<RotOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(RotOp op, PatternRewriter &rewriter) const override {
+    auto prevRot = op.getInQubit().getDefiningOp<RotOp>();
+    if (!prevRot) return failure();
+
+    // Check if rotation axes match
+    if (prevRot.getPhi() == op.getPhi() && prevRot.getLambda() == op.getLambda()) {
+      double newTheta = fmod(prevRot.getTheta() + op.getTheta(), 2.0 * M_PI);
+      auto newRot = rewriter.create<RotOp>(
+          op.getLoc(), prevRot.getInQubit(), newTheta, op.getPhi(), op.getLambda());
+      rewriter.replaceOp(op, newRot.getOutQubit());
+      return success();
+    }
+    return failure();
+  }
+};
+
+void populateCanonicalizationPatterns(RewritePatternSet &patterns) {
+  patterns.add<EliminateDoubleHadamard, MergeConsecutiveRotations>(patterns.getContext());
+}
+
+} // namespace mlir::dqc
+\end{lstlisting}
+
+\begin{passbox}{Pass 1 Entry and Exit Invariants}
+\textbf{Entry Invariant:} Arbitrary quantum AST containing non-standard gates and duplicate rotations.\\
 \textbf{Exit Invariants:}
 \begin{itemize}
-    \item Universal basis reduction: All operations lowered to $\{R_x, R_y, R_z, H, \text{CNOT}, \text{CZ}, \text{Measure}\}$.
-    \item Linear SSA verification: Single use of every \texttt{!dqc.qubit} SSA value.
-    \item Dead gate elimination completed.
+    \item All gates decomposed into $\{R_x, R_y, R_z, H, \text{CNOT}, \text{CZ}, \text{Measure}\}$.
+    \item All adjacent self-inverse pairs eliminated.
+    \item Linear SSA verified across all basic blocks.
+    \item Qubits remain unassigned to physical QPUs (global monolithic view).
 \end{itemize}
 \end{passbox}
 
-% ==============================================================================
+% ======================================================================
+% PASS 2: PARTITIONING
+% ======================================================================
+
 \section{Pass 2: Hypergraph Extraction and Partitioning}
 \label{sec:pass2_partitioning}
-% ==============================================================================
 
-Pass 2 transforms the sequential IR into a hypergraph $\mathcal{H} = (\mathcal{V}, \mathcal{E})$ as formalized in Chapter~\ref{ch:hypergraph_partitioning}. 
+\subsection{Architectural Purpose}
+Pass 2 solves the spatial placement problem. It extracts the global interaction hypergraph $\mathcal{H} = (\mathcal{V}, \mathcal{E})$ from the normalized IR, invokes the multi-level KaHyPar engine, and tags every qubit allocation with a concrete \texttt{qpu.id} attribute.
 
-\subsection{Attribute Attachment}
-After KaHyPar computes the balanced partition $\pi: Q \to \{1, \dots, M\}$, Pass 2 decorates every qubit allocation operation with a physical QPU affinity attribute:
+\begin{lstlisting}[language=C++, caption={Pass 2: Hypergraph Partitioning Pass (HypergraphPartitioningPass.cpp)}]
+#include "dqc/Passes/Passes.h"
+#include "dqc/DQCOps.h"
+#include <libkahypar.h>
 
-\begin{lstlisting}[language=MLIR, caption={Intermediate IR after Pass 2 (QPU Affinity Attached)}]
-// Allocations annotated with physical placement attributes
-%q0 = dqc.alloc_qubit() {qpu.id = 0 : i32, physical.pin = 4 : i32} : !dqc.qubit
-%q1 = dqc.alloc_qubit() {qpu.id = 0 : i32, physical.pin = 5 : i32} : !dqc.qubit
-%q2 = dqc.alloc_qubit() {qpu.id = 1 : i32, physical.pin = 2 : i32} : !dqc.qubit
-%q3 = dqc.alloc_qubit() {qpu.id = 1 : i32, physical.pin = 3 : i32} : !dqc.qubit
+namespace mlir::dqc {
 
-// Gates initially retain monolithic syntax but cross QPU boundaries
-%q0_1, %q2_1 = dqc.cnot %q0, %q2 : !dqc.qubit, !dqc.qubit  // CROSS-QPU EDGE!
+struct HypergraphPartitioningPass : public PassWrapper<HypergraphPartitioningPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    std::vector<AllocQubitOp> qubits;
+    DenseMap<Value, size_t> qubitIndices;
+
+    // 1. Collect all qubit allocations
+    module.walk([&](AllocQubitOp op) {
+      qubitIndices[op.getQubit()] = qubits.size();
+      qubits.push_back(op);
+    });
+
+    size_t numQubits = qubits.size();
+    if (numQubits == 0) return;
+
+    // 2. Build Hypergraph Incident Pins
+    std::vector<kahypar_hyperedge_id_t> hyperedgeIndices;
+    std::vector<kahypar_hypernode_id_t> hyperedges;
+    std::vector<kahypar_hyperedge_weight_t> edgeWeights;
+
+    module.walk([&](CNOTOp op) {
+      size_t u = qubitIndices[op.getControl()];
+      size_t v = qubitIndices[op.getTarget()];
+      hyperedgeIndices.push_back(hyperedges.size());
+      hyperedges.push_back(u);
+      hyperedges.push_back(v);
+      edgeWeights.push_back(1);
+    });
+    hyperedgeIndices.push_back(hyperedges.size());
+
+    // 3. Invoke KaHyPar C-API
+    std::vector<kahypar_partition_id_t> partition(numQubits, 0);
+    kahypar_context_t* context = kahypar_context_new();
+    kahypar_configure_context_from_file(context, "kahypar_config.ini");
+
+    kahypar_partition(numQubits, edgeWeights.size(), 0.03, 2, nullptr,
+                      edgeWeights.data(), hyperedgeIndices.data(), hyperedges.data(),
+                      context, partition.data());
+
+    // 4. Attach QPU Affinity Attributes to IR
+    OpBuilder builder(&getContext());
+    for (size_t i = 0; i < numQubits; ++i) {
+      qubits[i]->setAttr("qpu.id", builder.getI32IntegerAttr(partition[i]));
+    }
+    kahypar_context_free(context);
+  }
+};
+
+} // namespace mlir::dqc
 \end{lstlisting}
 
-% ==============================================================================
+\begin{passbox}{Pass 2 Entry and Exit Invariants}
+\textbf{Entry Invariant:} Normalized, monolithic DQC IR from Pass 1.\\
+\textbf{Exit Invariants:}
+\begin{itemize}
+    \item Every \texttt{dqc.alloc\_qubit} has an attached \texttt{qpu.id = k} attribute ($k \in \{0, \dots, M-1\}$).
+    \item Cluster capacity constraints strictly satisfied ($|\pi^{-1}(m)| \le C_m$).
+    \item Total hyperedge cut weight minimized under the $(\lambda - 1)$ metric.
+\end{itemize}
+\end{passbox}
+
+% ======================================================================
+% PASS 3: SYNTHESIS
+% ======================================================================
+
 \section{Pass 3: Non-Local Teleportation Synthesis}
 \label{sec:pass3_synthesis}
-% ==============================================================================
 
-Pass 3 traverses the IR and inspects every multi-qubit operation. If the source operands have conflicting \texttt{qpu.id} attributes, the operation is flagged as non-local.
+\subsection{Architectural Purpose}
+Pass 3 identifies all two-qubit operations that cross partition boundaries and rewrites them into distributed gate teleportation primitives, allocating physical EPR pairs and inserting measurement feedforward fixups.
 
-\begin{figure}[htbp]
-    \centering
-    \begin{tikzpicture}[scale=0.9, >=stealth]
-        % Left: Before rewrite
-        \node[draw, rectangle, fill=red!10, draw=red!80!black, rounded corners=2mm, font=\small\bfseries, align=center] (before) at (-3.5, 2) {
-            \texttt{\%out:2 = dqc.cnot \%qc, \%qt}\\
-            \scriptsize \texttt{owner(\%qc) = QPU 0}\\
-            \scriptsize \texttt{owner(\%qt) = QPU 1}
-        };
-        
-        % Right: After rewrite
-        \node[draw, rectangle, fill=green!10, draw=compilerteal, rounded corners=2mm, font=\small, align=left] (after) at (3.5, 2) {
-            \texttt{\%epr = dqc.distribute\_epr <0, 1>}\\
-            \texttt{\%qc\_1, \%ea = dqc.cnot \%qc, \%epr\#0}\\
-            \texttt{\%m1 = dqc.measure \%ea}\\
-            \texttt{\%eb\_1, \%qt\_1 = dqc.cnot \%epr\#1, \%qt}\\
-            \texttt{\%eb\_2 = dqc.h \%eb\_1}\\
-            \texttt{\%m2 = dqc.measure \%eb\_2}\\
-            \texttt{\%qt\_final = dqc.pauli\_fixup \%qt\_1, \%m1, "X"}\\
-            \texttt{\%qc\_final = dqc.pauli\_fixup \%qc\_1, \%m2, "Z"}
-        };
-        
-        % Transformation Arrow
-        \draw[->, line width=2pt, color=darkblue] (-0.8, 2) -- node[above, font=\footnotesize\bfseries] {Pattern} node[below, font=\footnotesize\bfseries] {Rewrite} (0.8, 2);
-    \end{tikzpicture}
-    \caption{Pattern rewrite mechanics in Pass 3. A monolithic cross-QPU CNOT is expanded into the deterministic Eisert teleportation protocol.}
-    \label{fig:pass3_pattern_rewrite}
-\end{figure}
+\begin{lstlisting}[language=C++, caption={Pass 3: Non-Local Gate Teleportation Rewriter (TeleportationSynthesisPass.cpp)}]
+#include "dqc/Passes/Passes.h"
+#include "dqc/DQCOps.h"
 
-The MLIR rewrite pattern matches against \texttt{dqc.cnot}, allocates an EPR handle via \texttt{dqc.distribute\_epr}, and inserts the required local CNOTs, measurements, and classical fix-up operations.
+namespace mlir::dqc {
 
-% ==============================================================================
-\section{Pass 4: Coherence-Aware DAG Scheduling}
-\label{sec:pass4_scheduling}
-% ==============================================================================
+struct SynthesizeRemoteCNOT : public OpRewritePattern<CNOTOp> {
+  using OpRewritePattern<CNOTOp>::OpRewritePattern;
 
-A naive sequential ordering of teleportation operations causes catastrophic decoherence: if an EPR pair is distributed at time $t=0$, but the downstream gate is scheduled at $t = 100\,\mu\text{s}$, the Bell state will have decayed past the classical threshold $F < 2/3$.
+  LogicalResult matchAndRewrite(CNOTOp op, PatternRewriter &rewriter) const override {
+    auto ctrlAlloc = op.getControl().getDefiningOp<AllocQubitOp>();
+    auto tgtAlloc = op.getTarget().getDefiningOp<AllocQubitOp>();
+    if (!ctrlAlloc || !tgtAlloc) return failure();
 
-Pass 4 constructs a **Dependency DAG** taking into account:
+    int srcQpu = ctrlAlloc->getAttrOfType<IntegerAttr>("qpu.id").getInt();
+    int dstQpu = tgtAlloc->getAttrOfType<IntegerAttr>("qpu.id").getInt();
+
+    // If local, leave untouched
+    if (srcQpu == dstQpu) return failure();
+
+    Location loc = op.getLoc();
+
+    // 1. Emit EPR allocation request between srcQpu and dstQpu
+    auto eprOp = rewriter.create<PrepareEprOp>(loc, srcQpu, dstQpu, 0.960);
+
+    // 2. Emit Telegate Primitive
+    auto telegateOp = rewriter.create<TelegateOp>(
+        loc, op.getControl(), op.getTarget(), eprOp.getEpr(), "CNOT");
+
+    // 3. Replace original CNOT outputs with telegate outputs
+    rewriter.replaceOp(op, ValueRange{telegateOp.getOutSrc(), telegateOp.getOutDst()});
+    return success();
+  }
+};
+
+} // namespace mlir::dqc
+\end{lstlisting}
+
+\begin{passbox}{Pass 3 Entry and Exit Invariants}
+\textbf{Entry Invariant:} Partitioned DQC IR with \texttt{qpu.id} annotations from Pass 2.\\
+\textbf{Exit Invariants:}
 \begin{itemize}
-    \item Physical gate execution durations ($\tau_{\text{1Q}} \approx 20\text{ ns}, \tau_{\text{2Q}} \approx 200\text{ ns}, \tau_{\text{meas}} \approx 500\text{ ns}$),
-    \item Interconnect EPR generation latency ($\tau_{\text{epr}} \approx 1.5\,\mu\text{s}$), and
-    \item Classical inter-refrigerator network round-trip time ($\tau_{\text{class}} \approx 50\text{ ns}$).
+    \item Zero cross-QPU \texttt{dqc.cnot} or \texttt{dqc.cz} operations remain.
+    \item Every non-local interaction is replaced by a verified \texttt{dqc.telegate} and preceding \texttt{dqc.prepare\_epr}.
+    \item Classical feedforward Pauli corrections are fully generated.
 \end{itemize}
+\end{passbox}
 
-The scheduler hoists EPR allocation operations so that EPR pairs arrive at the target QPUs precisely when the controlling data qubits enter their execution window, completely eliminating buffer idle time.
+% ======================================================================
+% PASS 4: SCHEDULING
+% ======================================================================
 
-% ==============================================================================
-\section{Pass 5: Target Lowering and Runtime Generation}
+\section{Pass 4: Decoherence-Aware DAG Scheduling}
+\label{sec:pass4_scheduling}
+
+\subsection{Architectural Purpose}
+Pass 4 transforms the synthesized IR into a temporal execution schedule. It calculates ASAP early start times, ALAP late start times, computes Critical Path slacks, hoists \texttt{prepare\_epr} operations to their exact ALAP limit (Just-In-Time scheduling), and fills idle slacks with XY4 dynamical decoupling pulse trains.
+
+\begin{lstlisting}[language=C++, caption={Pass 4: Coherence-Aware DAG Scheduler (CoherenceAwareSchedulingPass.cpp)}]
+#include "dqc/Passes/Passes.h"
+#include "dqc/DQCOps.h"
+
+namespace mlir::dqc {
+
+struct CoherenceAwareSchedulingPass : public PassWrapper<CoherenceAwareSchedulingPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    DenseMap<Operation*, double> asapTimes;
+    DenseMap<Operation*, double> alapTimes;
+    double makespan = 0.0;
+
+    // Forward Pass: Compute ASAP
+    module.walk([&](Operation *op) {
+      double maxPrev = 0.0;
+      for (Value operand : op->getOperands()) {
+        if (Operation *defOp = operand.getDefiningOp()) {
+          maxPrev = std::max(maxPrev, asapTimes[defOp] + getOpDuration(defOp));
+        }
+      }
+      asapTimes[op] = maxPrev;
+      makespan = std::max(makespan, maxPrev + getOpDuration(op));
+    });
+
+    // Backward Pass: Compute ALAP
+    auto ops = llvm::to_vector(module.getOps());
+    for (auto it = ops.rbegin(); it != ops.rend(); ++it) {
+      Operation *op = *it;
+      double minNext = makespan;
+      for (Operation *user : op->getUsers()) {
+        minNext = std::min(minNext, alapTimes[user] - getOpDuration(op));
+      }
+      alapTimes[op] = minNext;
+    }
+
+    // Apply JIT Hoisting to EPR Operations
+    OpBuilder builder(&getContext());
+    module.walk([&](PrepareEprOp op) {
+      double jitStart = alapTimes[op];
+      op->setAttr("sched.time_ns", builder.getF64FloatAttr(jitStart));
+    });
+  }
+
+  double getOpDuration(Operation *op) {
+    if (isa<HOp, RotOp>(op)) return 20.0;           // 20 ns
+    if (isa<CNOTOp>(op)) return 180.0;              // 180 ns
+    if (isa<PrepareEprOp>(op)) return 2000.0;       // 2 us
+    if (isa<TelegateOp>(op)) return 500.0;          // 500 ns
+    return 0.0;
+  }
+};
+
+} // namespace mlir::dqc
+\end{lstlisting}
+
+\begin{passbox}{Pass 4 Entry and Exit Invariants}
+\textbf{Entry Invariant:} Synthesized DQC IR from Pass 3.\\
+\textbf{Exit Invariants:}
+\begin{itemize}
+    \item Every operation has an assigned \texttt{sched.time\_ns} timestamp attribute.
+    \item EPR operations are scheduled JIT immediately prior to telegate consumption ($\Delta t_{\text{buffer}} = 0$).
+    \item Idle gaps $\Delta t \ge 4\tau_p$ contain synthesized XY4 refocusing pulses.
+\end{itemize}
+\end{passbox}
+
+% ======================================================================
+% PASS 5: TARGET LOWERING
+% ======================================================================
+
+\section{Pass 5: Distributed Target Lowering and Code Generation}
 \label{sec:pass5_lowering}
-% ==============================================================================
 
-The final pass splits the unified distributed MLIR module into heterogeneous target outputs:
+\subsection{Architectural Purpose}
+Pass 5 performs the final lowering. It takes the scheduled MLIR module, extracts operations belonging to each discrete QPU, emits standalone QIR LLVM bitcode or OpenQASM 3.0 binaries, and generates a C++ MPI orchestrator to coordinate inter-cryostat messaging.
+
+\begin{lstlisting}[language=C++, caption={Pass 5: Lowering to Quantum Intermediate Representation (LowerToQIRPass.cpp)}]
+#include "dqc/Passes/Passes.h"
+#include "dqc/DQCOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+
+namespace mlir::dqc {
+
+struct LowerToQIRPass : public PassWrapper<LowerToQIRPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    MLIRContext *context = &getContext();
+    OpBuilder builder(context);
+
+    // Generate QIR Runtime External Function Declarations
+    auto i8PtrTy = LLVM::LLVMPointerType::get(builder.getI8Type());
+    auto voidTy = LLVM::LLVMVoidType::get(context);
+    auto i32Ty = builder.getI32Type();
+
+    // 1. declare void @__quantum__qis__cnot(%Qubit*, %Qubit*)
+    builder.setInsertionPointToStart(module.getBody());
+    module.push_back(LLVM::LLVMFuncOp::create(
+        module.getLoc(), "__quantum__qis__cnot",
+        LLVM::LLVMFunctionType::get(voidTy, {i8PtrTy, i8PtrTy})));
+
+    // 2. declare void @__quantum__rt__telegate_cnot(%Qubit*, %Qubit*, i32)
+    module.push_back(LLVM::LLVMFuncOp::create(
+        module.getLoc(), "__quantum__rt__telegate_cnot",
+        LLVM::LLVMFunctionType::get(voidTy, {i8PtrTy, i8PtrTy, i32Ty})));
+  }
+};
+
+} // namespace mlir::dqc
+\end{lstlisting}
+
+\begin{passbox}{Pass 5 Entry and Exit Invariants}
+\textbf{Entry Invariant:} Scheduled DQC IR with timing annotations from Pass 4.\\
+\textbf{Exit Invariants:}
+\begin{itemize}
+    \item $M$ independent QIR/OpenQASM binaries (one per QPU chip).
+    \item One classical MPI/RDMA C++ orchestrator binary.
+    \item All high-level \texttt{dqc} dialect operations lowered to hardware primitives.
+\end{itemize}
+\end{passbox}
+
+% ======================================================================
+% CHAPTER SUMMARY
+% ======================================================================
+
+\begin{summarybox}{Key Invariants of Chapter 8}
 \begin{enumerate}
-    \item **Per-QPU Quantum Bytecode:** Emits clean QIR / OpenQASM 3.0 containing only operations local to that QPU.
-    \item **Distributed C++ Orchestrator:** Emits an MPI/RDMA runtime driver that handles classical message routing, measurement outcome synchronization, and EPR hardware triggers.
+    \item \textbf{Assembly-Line Architecture:} DQC structures distributed compilation into five verifiable, decoupled passes.
+    \item \textbf{C++ Pattern Rewriting:} Declarative \texttt{OpRewritePattern} classes automate peephole optimization and telegate synthesis.
+    \item \textbf{Strict Ordering Invariant:} Violating pass order compromises semantic correctness (e.g., partitioning before normalisation hides hypergraph structure).
+    \item \textbf{End-to-End Artifacts:} The pipeline transforms high-level circuits into per-QPU quantum binaries and a unified classical network orchestrator.
 \end{enumerate}
+\end{summarybox}
 
-This modular five-pass separation provides the structural guarantee of correctness, allowing DQC to scale from small multi-chip prototypes to large-scale quantum datacenters.
+% ======================================================================
+% EXERCISES
+% ======================================================================
+
+\section*{Exercises}
+\addcontentsline{toc}{section}{Exercises}
+
+\begin{enumerate}[label=\textbf{8.\arabic*.}]
+    \item \textbf{Peephole Reduction.} Given the following gate sequence, apply all possible peephole reductions and count the surviving gates: $H$, $R_z(0.5)$, $H$, $H$, $\text{CNOT}(0,1)$, $R_z(1.2)$, $R_z(-0.2)$, $\text{CNOT}(0,1)$, $\text{CNOT}(0,1)$, $X$, $X$.
+    
+    \item \textbf{Cross-QPU Gate Counting.} A 6-qubit circuit has 15 CNOT gates. After Pass 2 partitions qubits $\{q_0, q_1, q_2\}$ to QPU 0 and $\{q_3, q_4, q_5\}$ to QPU 1, suppose 4 of the 15 CNOTs cross the partition boundary. How many EPR pairs does Pass 3 allocate? What is the total operation count after Pass 3?
+    
+    \item \textbf{Decoherence Budget.} An EPR pair has $T_2^* = 80\,\mu$s. The telegate that consumes it is scheduled 60 $\mu$s after EPR generation. What is the expected fidelity decay factor? Does this satisfy the decoherence safety margin of $0.8 \times T_2^*$ ?
+    
+    \item \textbf{Pass Ordering (Thought Experiment).} Suppose a colleague proposes adding a ``Pass 2.5'' between partitioning and synthesis that re-optimizes the circuit by cancelling gates across partition boundaries. Explain why this is safe (or unsafe) with respect to the invariants of Passes 2 and 3.
+    
+    \item \textbf{C++ Pass Extension.} Write a complete C++ \texttt{OpRewritePattern<SwapOp>} that replaces a non-local SWAP gate crossing QPU boundaries with 3 remote CNOT telegates and 6 classical feedforward corrections.
+    
+    \item \textbf{FileCheck Integration.} Write an LLVM FileCheck test verifying that Pass 1 eliminates adjacent $H \cdot H$ operations while preserving single $H$ gates.
+    
+    \item \textbf{Pass Latency Scaling.} If Pass 1 executes in $\mathcal{O}(G)$, Pass 2 in $\mathcal{O}(|V| \log |V| + |\mathcal{E}|)$, Pass 3 in $\mathcal{O}(G_{\text{cut}})$, Pass 4 in $\mathcal{O}(G \log G)$, and Pass 5 in $\mathcal{O}(G)$, derive the asymptotic worst-case compilation complexity of the entire pipeline.
+    
+    \item \textbf{MPI Orchestrator Generation.} Sketch the C++ orchestrator code generated by Pass 5 for synchronizing two QPUs executing a non-local CNOT, including the non-blocking \texttt{MPI\_Irecv} for Bell measurement outcome transmission.
+\end{enumerate}

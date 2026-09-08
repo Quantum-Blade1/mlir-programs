@@ -2,142 +2,454 @@
 \label{ch:distributed_qec}
 
 \begin{quote}
-\textit{``In NISQ computation, quantum errors degrade circuit output. In fault-tolerant distributed supercomputers, quantum error correction is the operating system, and lattice surgery is the bus protocol.''}
+\textit{``Quantum error correction is like spell-checking a document written in invisible ink---you can never read the ink directly, but you can still detect and fix spelling mistakes by asking clever questions about the patterns of letters.''}
 \end{quote}
 
-While NISQ-era distributed compilation focuses on minimizing EPR consumption for shallow physical circuits, the ultimate destination of quantum computing is **Fault-Tolerant Quantum Supercomputing (FTQC)**. To solve intractable problems in cryptography, materials science, and biochemistry, algorithms require billions of quantum gates. Because physical error rates ($\sim 10^{-3}$) are orders of magnitude too high, logical qubits must be protected within **Quantum Error Correction (QEC)** codes.
+% ======================================================================
+% OPENING NARRATIVE
+% ======================================================================
+\section*{Chapter Overview: The Leap to Fault-Tolerant Distributed Supercomputing}
 
-The preeminent QEC paradigm is the **2D Surface Code**, prized for its 2D nearest-neighbor planar connectivity and high fault-tolerant threshold ($p_{\text{th}} \approx 1\%$). However, encoding a single logical qubit with code distance $d=27$ requires over 1,400 physical qubits. A fault-tolerant quantum computer executing Shor's algorithm will mandate millions of physical qubits---demanding hundreds of interconnected cryogenic dilution refrigerators.
+Every quantum computation we have discussed in Parts I--IV operates on \textit{physical} qubits---raw, unprotected two-level systems that accumulate errors with every gate, every idle nanosecond, and every interaction with thermal environments. At state-of-the-art physical error rates ($\sim 10^{-3}$ per gate), a quantum program containing more than a few thousand physical gates will collapse into complete noise.
 
-This chapter establishes the architecture of **Distributed Quantum Error Correction**. We formalize surface code stabilizer extraction across physical boundaries, derive the mechanics of **Lattice Surgery** over quantum interconnects, analyze threshold degradation under noisy channel models, and formulate the compiler optimizations required to schedule distributed fault-tolerant operations.
+\keyterm{Fault-Tolerant Quantum Computing (FTQC)} overcomes this physical reality by encoding each \keyterm{logical qubit} into a topological collective of many \keyterm{physical qubits}. Errors on individual physical carriers are continuously detected and corrected in real time without ever measuring or collapsing the encoded logical quantum information.
 
-% ==============================================================================
-\section{Surface Code Architecture Across Physical Boundaries}
-\label{sec:surface_code_distribution}
-% ==============================================================================
+The preeminent architecture for practical fault tolerance is the \keyterm{2D Surface Code} (and its modern rotated variant). It is universally prized across industry for three decisive reasons:
+\begin{enumerate}
+    \item \textbf{Planar 2D Nearest-Neighbor Grid:} It requires physical couplings only between adjacent qubits on a 2D planar lattice, perfectly matching superconducting, semiconductor, and neutral atom chip layouts.
+    \item \textbf{High Fault-Tolerance Threshold ($p_{\text{th}} \approx 1\%$):} It suppresses logical errors exponentially as long as physical gate error rates remain below approximately $1\%$.
+    \item \textbf{Universal Logic via Lattice Surgery:} Encoded logical gates are executed by dynamically merging and splitting code patch boundaries without physically transporting matter qubits.
+\end{enumerate}
 
-A rotated surface code patch of distance $d$ consists of $d^2$ physical data qubits arranged in a square lattice, surrounded by $d^2 - 1$ syndrome ancilla qubits. The code space is defined as the simultaneous $+1$ eigenspace of commuting stabilizer operators:
+However, fault tolerance creates an immense physical scaling challenge: a single protected logical qubit with code distance $d = 27$ requires over $1,450$ physical transmons. A million-qubit fault-tolerant quantum supercomputer executing Shor's factoring algorithm or simulating complex nitrogenase enzymes will require hundreds of thousands of logical qubits---demanding \textbf{hundreds of millions of physical qubits}.
+
+Because no single cryostat or vacuum chamber can hold millions of qubits, \textbf{the surface code lattice must be distributed across multi-QPU architectures}. 
+
+In this chapter, we explore the physics, mathematics, and compiler algorithms of distributed quantum error correction: rotated surface code topologies, boundary stabilizer measurement protocols consuming continuous EPR streams, distributed lattice surgery, real-time FPGA decoder networks, and modern \keyterm{Quantum Low-Density Parity-Check (qLDPC)} codes over distributed quantum fabrics.
+
+% ======================================================================
+% SURFACE CODE PRIMER & TOPOLOGY
+% ======================================================================
+\section{Surface Code Primer and Rotated Patch Topologies}
+\label{sec:surface_code_primer}
+
+\subsection{Stabilizer Formalism and Homological Chain Complexes}
+A Calderbank-Shor-Steane (CSS) quantum error-correcting code encodes $k$ logical qubits into $n$ physical qubits with distance $d$, denoted as $[[n, k, d]]$. The code space $\mathcal{C} \subseteq (\mathbb{C}^2)^{\otimes n}$ is defined as the joint $+1$ eigenspace of an Abelian group of commuting Pauli stabilizer operators $\mathcal{S} = \langle S_1, S_2, \dots, S_{n-k} \rangle \le \mathcal{P}_n$, such that $-\mathbb{I} \notin \mathcal{S}$:
+\begin{equation}
+    \ket{\psi_L} \in \mathcal{C} \iff S_i \ket{\psi_L} = +\ket{\psi_L}, \quad \forall S_i \in \mathcal{S}.
+    \label{eq:stabilizer_eigenspace_ch13}
+\end{equation}
+
+In algebraic topology and homological quantum error correction, a 2D surface code is defined over a cellular decomposition (cell complex) $X$ of a 2D manifold with boundaries. We establish a chain complex of vector spaces over the Galois field $\mathbb{F}_2 = \{0, 1\}$:
+\begin{equation}
+    C_2 \xrightarrow{\partial_2} C_1 \xrightarrow{\partial_1} C_0,
+    \label{eq:homological_chain_complex}
+\end{equation}
+where:
+\begin{itemize}
+    \item $C_2$ is the $\mathbb{F}_2$-vector space generated by 2-cells (faces / plaquettes $p \in F$),
+    \item $C_1$ is the $\mathbb{F}_2$-vector space generated by 1-cells (edges $e \in E$, representing physical data qubits),
+    \item $C_0$ is the $\mathbb{F}_2$-vector space generated by 0-cells (vertices $v \in V$).
+\end{itemize}
+
+The linear boundary operators $\partial_2: C_2 \to C_1$ and $\partial_1: C_1 \to C_0$ satisfy the fundamental nilpotency condition $\partial_1 \circ \partial_2 = 0$. In this topological framework:
+\begin{enumerate}
+    \item \textbf{$X$-type (Star) Stabilizers ($A_v$):} Defined on vertices $v \in V$, corresponding to the coboundary operator $\partial_1^T: C_0 \to C_1$:
+    \begin{equation}
+        A_v = \bigotimes_{e \in \text{star}(v)} X_e, \quad \text{where } \text{star}(v) = \{e \in E \mid v \in \partial_1(e)\}.
+    \end{equation}
+    \item \textbf{$Z$-type (Plaquette) Stabilizers ($B_p$):} Defined on faces $p \in F$, corresponding to the boundary operator $\partial_2: C_2 \to C_1$:
+    \begin{equation}
+        B_p = \bigotimes_{e \in \partial_2(p)} Z_e.
+    \end{equation}
+    \item \textbf{Logical Operators and Homology Groups:} The logical Pauli operators correspond to non-trivial elements of the first homology group $H_1(X, \mathbb{F}_2)$ and cohomology group $H^1(X, \mathbb{F}_2)$:
+    \begin{equation}
+        H_1(X, \mathbb{F}_2) = \frac{\ker \partial_1}{\operatorname{im} \partial_2}, \qquad H^1(X, \mathbb{F}_2) = \frac{\ker \partial_2^T}{\operatorname{im} \partial_1^T}.
+    \end{equation}
+    An error chain $E_Z \in \ker \partial_1$ commutes with all stabilizers ($A_v$ and $B_p$). If $E_Z \in \operatorname{im} \partial_2$, it is a product of stabilizer plaquettes and acts trivially on the code space. If $E_Z \notin \operatorname{im} \partial_2$, it wraps non-trivially around the topology, executing an undetected logical $Z_L$ gate!
+\end{enumerate}
+
+\subsection{Rotated Surface Code Geometry}
+The \keyterm{Rotated Surface Code} reduces the physical qubit count by approximately $50\%$ compared to the original unrotated Kitaev toric code lattice. A rotated patch of distance $d$ encodes $k = 1$ logical qubit using:
 \begin{align}
-    \hat{A}_v &= \bigotimes_{i \in \text{star}(v)} X_i \quad (X\text{-type Star Stabilizers}), \\
-    \hat{B}_p &= \bigotimes_{j \in \text{plaquette}(p)} Z_j \quad (Z\text{-type Plaquette Stabilizers}).
+    n_{\text{data}} &= d^2 \quad \text{data qubits}, \\
+    n_{\text{anc}} &= d^2 - 1 \quad \text{syndrome ancilla qubits}, \\
+    N_{\text{total}} &= 2d^2 - 1 \quad \text{total physical qubits}.
 \end{align}
 
 \begin{figure}[htbp]
     \centering
-    \begin{tikzpicture}[scale=0.92, >=stealth]
-        % QPU Alpha Boundary (Left Patch)
-        \draw[rounded corners=3mm, fill=blue!5, draw=darkblue, line width=1pt] (-5.5, -2.5) rectangle (-0.5, 2.5);
-        \node[font=\bfseries\color{darkblue}] at (-3, 2.1) {QPU Alpha (Patch 1)};
-        
-        % QPU Beta Boundary (Right Patch)
-        \draw[rounded corners=3mm, fill=green!5, draw=compilerteal, line width=1pt] (0.5, -2.5) rectangle (5.5, 2.5);
-        \node[font=\bfseries\color{compilerteal}] at (3, 2.1) {QPU Beta (Patch 2)};
-        
-        % Data qubits Patch 1
-        \foreach \x in {-4, -3, -2, -1} {
-            \foreach \y in {-1.5, -0.5, 0.5, 1.5} {
-                \node[draw, circle, fill=black, inner sep=1.8pt] at (\x, \y) {};
-            }
-        }
-        % Data qubits Patch 2
-        \foreach \x in {1, 2, 3, 4} {
-            \foreach \y in {-1.5, -0.5, 0.5, 1.5} {
-                \node[draw, circle, fill=black, inner sep=1.8pt] at (\x, \y) {};
+    \begin{tikzpicture}[scale=0.95, >=stealth]
+        % Rotated Surface Code d=3 Grid
+        % Data qubits (circles at integer coordinates)
+        \foreach \x in {0, 2, 4} {
+            \foreach \y in {0, 2, 4} {
+                \node[draw, circle, fill=darkblue!20, line width=1pt, inner sep=3.5pt] (d\x\y) at (\x, \y) {$d_{\x\y}$};
             }
         }
         
-        % Intra-patch stabilizers (Plaquettes)
-        \draw[fill=blue!20, opacity=0.7] (-3, -0.5) rectangle (-2, 0.5);
-        \node[font=\tiny\bfseries] at (-2.5, 0) {$Z$};
-        \draw[fill=green!20, opacity=0.7] (2, -0.5) rectangle (3, 0.5);
-        \node[font=\tiny\bfseries] at (2.5, 0) {$Z$};
+        % Plaquette Z (Face 1: center (1, 3))
+        \draw[fill=compilerteal!25, draw=compilerteal, line width=1.2pt, opacity=0.75] (0, 4) -- (2, 4) -- (2, 2) -- (0, 2) -- cycle;
+        \node[font=\small\bfseries\color{compilerteal}] at (1, 3) {$Z^{\otimes 4}$};
         
-        % Inter-QPU Boundary Stabilizers (The Bridge)
-        \draw[rounded corners=2mm, fill=purple!20, draw=quantumviolet, line width=1.2pt] (-1.2, -0.8) rectangle (1.2, 0.8);
-        \node[font=\scriptsize\bfseries\color{quantumviolet}, align=center] at (0, 0) {Boundary\\Stabilizer $\hat{M}_{ZZ}$};
+        % Plaquette Z (Face 2: center (3, 1))
+        \draw[fill=compilerteal!25, draw=compilerteal, line width=1.2pt, opacity=0.75] (2, 2) -- (4, 2) -- (4, 0) -- (2, 0) -- cycle;
+        \node[font=\small\bfseries\color{compilerteal}] at (3, 1) {$Z^{\otimes 4}$};
         
-        % Entanglement link
-        \draw[<->, line width=2pt, color=quantumviolet, dashed] (-1, 0) -- (1, 0);
+        % Star X (Face 3: center (3, 3))
+        \draw[fill=quantumviolet!25, draw=quantumviolet, line width=1.2pt, opacity=0.75] (2, 4) -- (4, 4) -- (4, 2) -- (2, 2) -- cycle;
+        \node[font=\small\bfseries\color{quantumviolet}] at (3, 3) {$X^{\otimes 4}$};
         
-        % Demarcation line
-        \draw[dashed, color=red!70!black, line width=1pt] (0, 2.7) -- (0, -2.7);
-        \node[font=\tiny\color{red!70!black}, rotate=90] at (-0.2, -1.8) {Physical Cryostat Barrier};
+        % Star X (Face 4: center (1, 1))
+        \draw[fill=quantumviolet!25, draw=quantumviolet, line width=1.2pt, opacity=0.75] (0, 2) -- (2, 2) -- (2, 0) -- (0, 0) -- cycle;
+        \node[font=\small\bfseries\color{quantumviolet}] at (1, 1) {$X^{\otimes 4}$};
+        
+        % Boundary Z checks (weight-2)
+        \draw[fill=compilerteal!15, draw=compilerteal, line width=1pt, dashed] (0, 0) -- (0, 2) -- (-0.8, 1) -- cycle;
+        \node[font=\tiny\bfseries\color{compilerteal}] at (-0.3, 1) {$Z^{\otimes 2}$};
+        
+        \draw[fill=compilerteal!15, draw=compilerteal, line width=1pt, dashed] (4, 2) -- (4, 4) -- (4.8, 3) -- cycle;
+        \node[font=\tiny\bfseries\color{compilerteal}] at (4.3, 3) {$Z^{\otimes 2}$};
+        
+        % Boundary X checks (weight-2)
+        \draw[fill=quantumviolet!15, draw=quantumviolet, line width=1pt, dashed] (2, 4) -- (4, 4) -- (3, 4.8) -- cycle;
+        \node[font=\tiny\bfseries\color{quantumviolet}] at (3, 4.3) {$X^{\otimes 2}$};
+        
+        \draw[fill=quantumviolet!15, draw=quantumviolet, line width=1pt, dashed] (0, 0) -- (2, 0) -- (1, -0.8) -- cycle;
+        \node[font=\tiny\bfseries\color{quantumviolet}] at (1, -0.3) {$X^{\otimes 2}$};
+        
+        % Logical Operators
+        \draw[line width=2.5pt, color=darkblue] (0, 0) -- (0, 4);
+        \node[font=\footnotesize\bfseries\color{darkblue}, left=8pt] at (0, 2) {Logical $Z_L = Z_{00} Z_{02} Z_{04}$};
+        
+        \draw[line width=2.5pt, color=quantumviolet] (0, 0) -- (4, 0);
+        \node[font=\footnotesize\bfseries\color{quantumviolet}, below=6pt] at (2, 0) {Logical $X_L = X_{00} X_{20} X_{40}$};
     \end{tikzpicture}
-    \caption{Surface code patches distributed across physical QPU boundaries. Intra-patch stabilizers are measured via local nearest-neighbor interactions, while boundary stabilizers spanning the cryostat interface are measured via non-local Bell state ancillae.}
-    \label{fig:distributed_surface_code}
+    \caption{Rotated surface code patch of distance $d=3$. Solid circles represent physical data qubits ($d^2 = 9$). Shaded squares represent weight-4 bulk stabilizers ($Z^{\otimes 4}$ in teal, $X^{\otimes 4}$ in violet). Dashed polygons represent weight-2 boundary checks. Non-trivial homological chains spanning opposite boundaries form logical operators $X_L$ (bottom boundary) and $Z_L$ (left boundary).}
+    \label{fig:rotated_surface_code_d3_expanded}
 \end{figure}
 
-When a surface code patch spans across two physical chips, stabilizers that straddle the cut boundary cannot be measured with local physical gates. As illustrated in Figure~\ref{fig:distributed_surface_code}, measuring a weight-4 boundary stabilizer $\hat{S}_{\text{bound}} = Z_{1A} Z_{2A} Z_{1B} Z_{2B}$ requires consuming continuous streams of EPR pairs to teleport syndrome parity between QPUs.
+\subsection{Syndrome Extraction Scheduling and Hook Error Prevention}
+Measuring weight-4 stabilizers requires coupling each syndrome ancilla qubit to its four surrounding data qubits via four sequential CNOT gates. A naive CNOT schedule can cause a single physical fault on the ancilla to propagate into a weight-2 data error aligned along a logical operator chain---an effect known as a \keyterm{Hook Error}.
 
-% ==============================================================================
-\section{Lattice Surgery Over Quantum Interconnects}
-\label{sec:lattice_surgery}
-% ==============================================================================
-
-In monolithic surface code architectures, logical qubits cannot execute transversal non-Clifford operations due to the Eastin-Knill Theorem. Instead, logical Clifford operations (CNOT, Pauli-X, Pauli-Z) are executed via **Lattice Surgery**---the dynamic merging and splitting of adjacent planar code patches along their rough or smooth boundaries.
-
-\subsection{Lattice Surgery Merge Protocol Across Interconnects}
-To execute a logical CNOT between Logical Qubit 1 ($Q_L^{(1)}$ on QPU $A$) and Logical Qubit 2 ($Q_L^{(2)}$ on QPU $B$), the distributed compiler orchestrates a multi-cycle lattice surgery merge:
-\begin{enumerate}
-    \item \textbf{Initialization of Intermediate Boundary Ancillae:} A strip of ancillary communication qubits is initialized in the eigenstate of the boundary operator along the inter-QPU channel.
-    \item \textbf{Syndrome Extraction Cycles ($d$ rounds):} For $d$ consecutive code cycles, the joint parity operator:
-    \begin{equation}
-        \hat{M}_{ZZ} = Z_L^{(1)} \otimes Z_L^{(2)} = \prod_{i=1}^d Z_{i, A} Z_{i, B}
-    \end{equation}
-    is repeatedly measured across the interconnect link.
-    \item \textbf{Patch Splitting:} The boundary ancillae are measured in the computational basis, terminating the merge and leaving the two logical qubits in the post-interaction entangled state.
-\end{enumerate}
-
-\begin{theorembox}{Fault-Tolerant Lattice Surgery Link Fidelity Threshold}
-To prevent inter-QPU lattice surgery from reducing the global code distance $d$, the error rate of the distributed Bell state channel $\epsilon_{\text{link}}$ must satisfy:
+To guarantee that any single fault produces an error of weight at most 1 along the logical string direction, the compiler enforces the standardized \textbf{North-East-West-South (NEWS)} schedule:
 \begin{equation}
-    \epsilon_{\text{link}} < 2 \cdot p_{\text{th}} \approx 1.4\text{--}1.8\%,
-    \label{eq:lattice_surgery_threshold}
+    \text{Schedule: } \quad \text{Step 1: North } (N) \longrightarrow \text{Step 2: East } (E) \longrightarrow \text{Step 3: West } (W) \longrightarrow \text{Step 4: South } (S).
 \end{equation}
-where $p_{\text{th}} \approx 0.7\text{--}1.0\%$ is the threshold of the local Minimum-Weight Perfect Matching (MWPM) syndrome decoder. If $\epsilon_{\text{link}}$ exceeds this bound, errors on the interconnect boundary propagate into logical phase errors $\hat{Z}_L$ faster than MWPM can identify syndromes.
-\end{theorembox}
-
-% ==============================================================================
-\section{Logical Error Rate Scaling in Distributed Supercomputers}
-\label{sec:logical_error_scaling}
-% ==============================================================================
-
-Under distributed lattice surgery, the logical error rate per logical clock cycle $P_L$ follows the modified Ans{\"a}tze:
-\begin{equation}
-    P_L(d, \epsilon_{\text{local}}, \epsilon_{\text{link}}) \approx C_1 \left( \frac{\epsilon_{\text{local}}}{p_{\text{th, local}}} \right)^{\frac{d+1}{2}} + C_2 \cdot N_{\text{cut}} \left( \frac{\epsilon_{\text{link}}}{p_{\text{th, link}}} \right)^{\frac{d+1}{2}},
-    \label{eq:distributed_pl_formula}
-\end{equation}
-where $N_{\text{cut}}$ is the number of boundary stabilizers crossing between QPUs, and $C_1, C_2$ are geometric fitting constants.
 
 \begin{figure}[htbp]
     \centering
-    \begin{tikzpicture}[scale=0.92, >=stealth]
-        % Axes (Log-Log)
-        \draw[->, line width=1pt] (0, 0) -- (9, 0) node[right, font=\small] {Physical Error Rate $p$};
-        \draw[->, line width=1pt] (0, 0) -- (0, 5) node[above, font=\small] {Logical Error Rate $P_L$};
+    \begin{tikzpicture}[scale=0.88, >=stealth]
+        % Ancilla in center
+        \node[draw, rectangle, fill=quantumviolet!30, line width=1pt, inner sep=4pt] (anc) at (0, 0) {$a_{\text{synd}}$};
         
-        % Guide lines
-        \draw[dotted, color=gray!60] (0, 4) -- (8.5, 4) node[right, font=\tiny] {$10^{-4}$};
-        \draw[dotted, color=gray!60] (0, 2.5) -- (8.5, 2.5) node[right, font=\tiny] {$10^{-8}$};
-        \draw[dotted, color=gray!60] (0, 1) -- (8.5, 1) node[right, font=\tiny] {$10^{-12}$};
+        % Four Data Qubits
+        \node[draw, circle, fill=darkblue!20, line width=1pt, inner sep=3pt] (dN) at (0, 2) {$d_N$};
+        \node[draw, circle, fill=darkblue!20, line width=1pt, inner sep=3pt] (dE) at (2, 0) {$d_E$};
+        \node[draw, circle, fill=darkblue!20, line width=1pt, inner sep=3pt] (dW) at (-2, 0) {$d_W$};
+        \node[draw, circle, fill=darkblue!20, line width=1pt, inner sep=3pt] (dS) at (0, -2) {$d_S$};
         
-        % Threshold vertical line
-        \draw[dashed, color=red!80!black, line width=1pt] (5.5, 0) -- (5.5, 4.8);
-        \node[font=\footnotesize\color{red!80!black}, rotate=90] at (5.2, 2.5) {Threshold $p_{\text{th}} \approx 0.8\%$};
-        
-        % Curves for distances d=3, 5, 7, 9
-        % d=3
-        \draw[color=darkblue, line width=1.5pt] plot coordinates {(1.5, 0.5) (3.5, 1.8) (5.5, 3.5) (7.5, 4.5)};
-        \node[font=\tiny\color{darkblue}] at (7.8, 4.5) {$d=3$};
-        % d=5
-        \draw[color=compilerteal, line width=1.5pt] plot coordinates {(1.5, 0.2) (3.5, 1.2) (5.5, 3.5) (7.5, 4.8)};
-        \node[font=\tiny\color{compilerteal}] at (7.8, 4.8) {$d=5$};
-        % d=9 (Steepest)
-        \draw[color=quantumviolet, line width=2pt] plot coordinates {(1.5, 0.0) (3.5, 0.4) (5.5, 3.5) (7.5, 5.0)};
-        \node[font=\tiny\color{quantumviolet}] at (7.8, 5.1) {$d=9$};
+        % CNOT arrows with step labels
+        \draw[->, line width=1.5pt, color=darkblue] (anc) -- node[fill=white, inner sep=1pt, font=\scriptsize\bfseries] {Step 1} (dN);
+        \draw[->, line width=1.5pt, color=darkblue] (anc) -- node[fill=white, inner sep=1pt, font=\scriptsize\bfseries] {Step 2} (dE);
+        \draw[->, line width=1.5pt, color=darkblue] (anc) -- node[fill=white, inner sep=1pt, font=\scriptsize\bfseries] {Step 3} (dW);
+        \draw[->, line width=1.5pt, color=darkblue] (anc) -- node[fill=white, inner sep=1pt, font=\scriptsize\bfseries] {Step 4} (dS);
     \end{tikzpicture}
-    \caption{Logical error rate suppression in distributed surface codes. Below the distributed threshold $p_{\text{th}} \approx 0.8\%$, increasing code distance $d$ exponentially suppresses logical error rates ($P_L \to 10^{-12}$), achieving fault-tolerant computation over macroscopic inter-refrigerator links.}
-    \label{fig:fault_tolerant_threshold}
+    \caption{Fault-tolerant NEWS syndrome extraction schedule for a weight-4 stabilizer generator. The 4-step sequence prevents single ancilla faults from back-propagating into dangerous weight-2 hook errors on data qubits.}
+    \label{fig:syndrome_extraction_schedule}
 \end{figure}
 
-As verified in Figure~\ref{fig:fault_tolerant_threshold}, when physical interconnect errors remain below $0.8\%$, increasing the surface code distance from $d=3$ to $d=9$ suppresses logical error rates down to $10^{-12}$, proving that distributed quantum supercomputing over cryogenic links is strictly mathematically and physically viable.
+% ======================================================================
+% DISTRIBUTED SURFACE CODES & BOUNDARY STABILIZERS
+% ======================================================================
+\section{Distributed Boundary Stabilizers Across Physical QPUs}
+\label{sec:distributed_surface_codes}
+
+When a surface code patch spans across two discrete QPUs (e.g., QPU Alpha and QPU Beta separated by an optical link), the boundary stabilizers must measure data qubits residing on separate physical substrates.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.9, >=stealth]
+        % QPU Alpha
+        \draw[rounded corners=3mm, fill=blue!5, draw=darkblue, line width=1.2pt] (-5.5, -2.5) rectangle (-0.5, 2.5);
+        \node[font=\bfseries\color{darkblue}] at (-3.0, 2.1) {QPU Alpha};
+        
+        \node[draw, circle, fill=darkblue!20, inner sep=3pt] (a1) at (-1.5, 1.2) {$d_1$};
+        \node[draw, circle, fill=darkblue!20, inner sep=3pt] (a2) at (-1.5, -1.2) {$d_2$};
+        \node[draw, rectangle, fill=quantumviolet!30, inner sep=3pt] (ancA) at (-1.5, 0.0) {$a_{\text{synd}}$};
+        
+        % QPU Beta
+        \draw[rounded corners=3mm, fill=green!5, draw=compilerteal, line width=1.2pt] (0.5, -2.5) rectangle (5.5, 2.5);
+        \node[font=\bfseries\color{compilerteal}] at (3.0, 2.1) {QPU Beta};
+        
+        \node[draw, circle, fill=compilerteal!20, inner sep=3pt] (b1) at (1.5, 1.2) {$d_3$};
+        \node[draw, circle, fill=compilerteal!20, inner sep=3pt] (b2) at (1.5, -1.2) {$d_4$};
+        
+        % Interconnect EPR Link
+        \draw[<->, line width=2pt, color=quantumviolet, dashed] (-0.5, 0) -- node[above, font=\scriptsize\bfseries] {EPR Channel} (0.5, 0);
+        
+        % Stabilizer Parity Box spanning boundary
+        \draw[fill=yellow!20, draw=orange!80!black, line width=1pt, opacity=0.6] (-2.2, -1.8) rectangle (2.2, 1.8);
+        \node[font=\footnotesize\bfseries\color{orange!80!black}] at (0, 1.5) {Distributed Stabilizer $Z_1 Z_2 Z_3 Z_4$};
+    \end{tikzpicture}
+    \caption{Distributed boundary stabilizer measurement across two QPUs. The syndrome ancilla on QPU Alpha measures local qubits $d_1, d_2$ directly, while coupling to $d_3, d_4$ on QPU Beta via non-local telegates consuming continuous EPR pairs.}
+    \label{fig:distributed_stabilizer_schematic_expanded}
+\end{figure}
+
+\subsection{Statevector Algebra of Distributed Stabilizer Extraction}
+To measure the weight-4 operator $S = Z_1 Z_2 Z_3 Z_4$ where $d_1, d_2, a \in \text{QPU}_A$ and $d_3, d_4 \in \text{QPU}_B$:
+\begin{enumerate}
+    \item \textbf{Initial State:} The ancilla $a$ is initialized to $\ket{+}_a = \frac{1}{\sqrt{2}}(\ket{0} + \ket{1})$. An optical link generates an EPR pair $\ket{\Phi^+}_{e_A e_B} = \frac{1}{\sqrt{2}}(\ket{00} + \ket{11})$.
+    \item \textbf{Local Entanglement on QPU Alpha:} Ancilla $a$ controls CNOTs targeted on data qubits $d_1, d_2$:
+    \begin{equation}
+        \text{State: } \quad \frac{1}{\sqrt{2}} \left( \ket{0}_a \ket{\psi}_{\text{data}} + \ket{1}_a Z_1 Z_2 \ket{\psi}_{\text{data}} \right) \otimes \ket{\Phi^+}_{e_A e_B}.
+    \end{equation}
+    \item \textbf{Remote Telegate to QPU Beta:} Ancilla $a$ teleports its controlled action to $d_3, d_4$ on QPU Beta by executing a CNOT onto $e_A$, measuring $e_A$ in the $X$-basis, and applying feedforward phase corrections.
+    \item \textbf{Measurement on QPU Alpha:} Measuring ancilla $a$ in the $X$-basis yields the parity outcome $m \in \{0, 1\}$, projecting the four data qubits into the $\pm 1$ eigenspace of $Z_1 Z_2 Z_3 Z_4$.
+\end{enumerate}
+
+\subsection{The Continuous EPR Bandwidth Law for Fault Tolerance}
+In fault-tolerant operation, stabilizer extraction cycles must repeat continuously every $\tau_{\text{cycle}} \approx 1\,\mu\text{s}$ to prevent errors from accumulating. For a distributed boundary of length $d$ physical qubits, every boundary stabilizer cycle requires at least $d$ non-local CNOT telegates.
+
+\begin{theorembox}{The Continuous EPR Bandwidth Law}
+To sustain fault-tolerant error suppression on a distributed surface code of distance $d$ partitioned across an optical link with syndrome extraction cycle time $\tau_{\text{cycle}}$, the physical EPR pair distribution rate $R_{\text{EPR}}$ must strictly satisfy:
+\begin{equation}
+    R_{\text{EPR}} \ge \frac{d}{\tau_{\text{cycle}}}.
+    \label{eq:epr_bandwidth_law_ch13}
+\end{equation}
+For $d = 27$ and $\tau_{\text{cycle}} = 1.0\,\mu\text{s}$, the optical interconnect must deliver sustained entanglement at:
+\begin{equation}
+    R_{\text{EPR}} \ge \frac{27}{1.0 \times 10^{-6}\text{ s}} = 27\text{ Mega-ebits/second (Mebits/s)}.
+\end{equation}
+\end{theorembox}
+
+% ======================================================================
+% DISTRIBUTED LATTICE SURGERY
+% ======================================================================
+\section{Distributed Lattice Surgery Operations}
+\label{sec:distributed_lattice_surgery}
+
+Logical multi-qubit operations between surface code patches (such as logical CNOT and $M_{ZZ}$ parity measurements) are executed via \keyterm{Lattice Surgery}---dynamically merging and splitting code boundaries.
+
+\subsection{Distributed Boundary Merging and Splitting}
+To perform a logical $Z_L \otimes Z_L$ parity measurement between Patch $A$ on QPU 0 and Patch $B$ on QPU 1:
+\begin{enumerate}
+    \item \textbf{Initialize Intermediate Boundary Ancillae:} Prepare a line of $d$ ancilla qubits along the inter-QPU boundary in $\ket{0}$.
+    \item \textbf{Measure Joint Stabilizers:} For $d$ continuous rounds, measure the weight-4 boundary stabilizers $Z_A Z_{\text{anc}} Z_B Z_{\text{anc}}'$ using inter-QPU telegates.
+    \item \textbf{Extract Parity Outcome:} The product of the measured boundary syndrome outcomes yields the fault-tolerant eigenvalue $M_{ZZ} \in \{+1, -1\}$.
+    \item \textbf{Split Boundaries:} Terminate the joint stabilizers and resume independent patch stabilizer cycles.
+\end{enumerate}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.88, >=stealth]
+        % Patch A (QPU 0)
+        \draw[fill=blue!10, draw=darkblue, line width=1.2pt] (-5, 0) rectangle (-1.5, 3.5);
+        \node[font=\footnotesize\bfseries\color{darkblue}] at (-3.25, 1.75) {Patch $A$ (QPU 0)};
+        
+        % Intermediate Ancilla Line (Boundary)
+        \draw[fill=yellow!20, draw=orange!80!black, line width=1pt, dashed] (-1.2, 0) rectangle (1.2, 3.5);
+        \node[font=\tiny\bfseries\color{orange!80!black}, align=center] at (0, 1.75) {Joint Boundary\\Stabilizers\\($d$ rounds)};
+        
+        % Patch B (QPU 1)
+        \draw[fill=green!10, draw=compilerteal, line width=1.2pt] (1.5, 0) rectangle (5, 3.5);
+        \node[font=\footnotesize\bfseries\color{compilerteal}] at (3.25, 1.75) {Patch $B$ (QPU 1)};
+        
+        % Merging arrows
+        \draw[->, line width=1.5pt, color=quantumviolet] (-1.5, 2.8) -- (-1.2, 2.8);
+        \draw[<-, line width=1.5pt, color=quantumviolet] (1.2, 2.8) -- (1.5, 2.8);
+        \node[font=\tiny\bfseries\color{quantumviolet}, above] at (0, 3.5) {Lattice Surgery $Z$-Merge};
+    \end{tikzpicture}
+    \caption{Distributed Lattice Surgery $Z$-Merge between two code patches on separate QPUs. Intermediate joint stabilizers are measured for $d$ rounds using non-local EPR telegates to measure $Z_L \otimes Z_L$ fault-tolerantly.}
+    \label{fig:distributed_lattice_surgery_diagram}
+\end{figure}
+
+\subsection{Logical CNOT Synthesis via Lattice Surgery}
+A non-local logical CNOT between control patch $\ket{\psi_c}$ on QPU 0 and target patch $\ket{\psi_t}$ on QPU 1 is synthesized using an intermediate routing ancilla patch $\ket{0_L}$:
+\begin{enumerate}
+    \item Initialize routing ancilla patch in logical state $\ket{0_L}$.
+    \item Execute a distributed $Z$-Merge between Control and Ancilla: measures $Z_c \otimes Z_a$.
+    \item Execute an $X$-Merge between Ancilla and Target: measures $X_a \otimes X_t$.
+    \item Measure Ancilla in $Z$-basis: projects ancilla, finalizing the logical CNOT up to known Pauli fixes.
+\end{enumerate}
+The total space-time volume of the distributed logical CNOT is $\mathcal{V} = 3 d^3$ physical qubit-rounds.
+
+\subsection{Distributed Surface Code Fault-Tolerance Thresholds}
+\label{sec:distributed_thresholds}
+
+In a monolithic planar surface code, the fault-tolerance threshold is approximately $p_{\text{th}} \approx 1.0\%$ under standard circuit-level depolarizing noise. When the code is partitioned across physical QPUs connected by lossy and noisy optical links with Bell pair infidelity $\epsilon_{\text{link}} = 1 - F_{\text{EPR}}$, the effective logical error rate $\mathcal{P}_L$ obeys the generalized sub-threshold scaling:
+\begin{equation}
+    \mathcal{P}_L(d, p_{\text{gate}}, \epsilon_{\text{link}}) \approx c_1 \left( \frac{p_{\text{gate}}}{p_{\text{th, local}}} \right)^{\frac{d+1}{2}} + c_2 \cdot d \left( \frac{\epsilon_{\text{link}}}{p_{\text{th, link}}} \right)^{\frac{d+1}{2}},
+    \label{eq:distributed_threshold_scaling}
+\end{equation}
+where $p_{\text{th, local}} \approx 0.95\%$ and $p_{\text{th, link}} \approx 2.5\%$.
+
+\begin{theorembox}{Distributed Surface Code Threshold Condition}
+For any code distance $d \ge 3$, exponential suppression of logical error ($\mathcal{P}_L \to 0$ as $d \to \infty$) is guaranteed if and only if both physical error rates simultaneously satisfy:
+\begin{equation}
+    p_{\text{gate}} < p_{\text{th, local}} \approx 0.95\% \quad \text{and} \quad \epsilon_{\text{link}} < p_{\text{th, link}} \approx 2.5\%.
+    \label{eq:threshold_conditions_joint}
+\end{equation}
+If link infidelity $\epsilon_{\text{link}} > 2.5\%$, increasing code distance $d$ across QPUs \textbf{increases} the total logical error rate, causing catastrophic fault-tolerance failure.
+\end{theorembox}
+
+\subsection{Distributed Union-Find (UF) Syndrome Decoding}
+\label{sec:distributed_union_find}
+
+To process syndrome extraction data generated at gigabyte-per-second rates across distributed QPUs without stalling the cryogenic controller, the compiler deploys a \keyterm{Distributed Union-Find Decoder}.
+
+\begin{algorithmbox}{Distributed Union-Find Syndrome Decoding Across QPUs}
+\textbf{Input:} Distributed syndrome defect set $\mathcal{D} = \mathcal{D}_0 \cup \mathcal{D}_1$, inter-QPU boundary graph $\mathcal{G}_{\text{boundary}}$.\\
+\textbf{Output:} Minimum-weight correction operator $\mathcal{C} = \mathcal{C}_0 \otimes \mathcal{C}_1$.
+\begin{enumerate}[leftmargin=1.5em]
+    \item Initialize cluster forest: each defect $v \in \mathcal{D}$ forms a singleton cluster $\mathcal{T}_v$.
+    \item \textbf{While} there exists an odd-cardinality cluster $\mathcal{T} \in \text{Forest}$ \textbf{do}:
+    \begin{itemize}
+        \item Simultaneously grow cluster boundary radius $r(\mathcal{T}) \leftarrow r(\mathcal{T}) + 1/2$ on each QPU.
+        \item If two clusters $\mathcal{T}_1, \mathcal{T}_2$ collide within a QPU, merge them into composite cluster $\mathcal{T}_{12} = \mathcal{T}_1 \cup \mathcal{T}_2$.
+        \item If cluster $\mathcal{T}_1$ intersects the inter-QPU boundary $\mathcal{G}_{\text{boundary}}$, transmit cluster perimeter message to neighbor QPU via RDMA.
+        \item When inter-QPU clusters collide, execute distributed union via classical message exchange.
+    \end{itemize}
+    \item For each even cluster, compute spanning tree peeling to extract local Pauli corrections $\mathcal{C}_m$.
+    \item \textbf{Return} Correction operator $\mathcal{C}$.
+\end{enumerate}
+\end{algorithmbox}
+
+% ======================================================================
+% BIVARIATE BICYCLE qLDPC CODES
+% ======================================================================
+\section{Quantum Low-Density Parity-Check (qLDPC) Codes}
+\label{sec:qldpc_codes}
+
+While surface codes require only nearest-neighbor 2D planar connectivity, they suffer from an asymptotic encoding rate $k/n \to 0$, requiring massive physical qubit overheads ($>1,000$ physical qubits per logical qubit).
+
+Modern \keyterm{Quantum Low-Density Parity-Check (qLDPC)} codes---notably \textbf{Bivariate Bicycle Codes} developed by IBM and academic consortia---overcome this limitation by encoding dozens of logical qubits into hundreds of physical qubits ($k/n \approx 0.1\text{--}0.2$).
+
+\subsection{Bivariate Bicycle Code Construction}
+Let $\ell, m \in \mathbb{Z}^+$ be integers defining a commutative group $G = \mathbb{Z}_\ell \times \mathbb{Z}_m$. The group algebra $\mathbb{F}_2[x, y] / \langle x^\ell - 1, y^m - 1 \rangle$ is generated by cyclic permutation matrices $x$ (of dimension $\ell$) and $y$ (of dimension $m$).
+
+Let $A, B \in \mathbb{F}_2[x, y]$ be polynomials with sparse binary coefficients:
+\begin{equation}
+    A = x^{a_1} + y^{a_2} + y^{a_3}, \qquad B = y^{b_1} + x^{b_2} + x^{b_3}.
+\end{equation}
+
+The parity-check matrices $H_X, H_Z \in \mathbb{F}_2^{\ell m \times 2\ell m}$ of the bivariate bicycle code are defined by:
+\begin{equation}
+    H_X = \begin{pmatrix} A & B \end{pmatrix}, \qquad H_Z = \begin{pmatrix} B^T & A^T \end{pmatrix}.
+    \label{eq:bivariate_bicycle_hz_hx}
+\end{equation}
+
+Because $A$ and $B$ commute in the group algebra ($A B = B A$), the CSS commutativity condition is identically satisfied:
+\begin{equation}
+    H_X H_Z^T = A (B^T)^T + B (A^T)^T = A B + B A = 2 A B \equiv 0 \pmod 2.
+\end{equation}
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Canonical Bivariate Bicycle qLDPC Codes and Interconnect Overheads}
+\label{tab:bivariate_bicycle_specs}
+\begin{tabularx}{\textwidth}{l c c c c X}
+\toprule
+\textbf{Code Family} & \textbf{Parameters $[[n, k, d]]$} & \textbf{Polynomial $A(x,y)$} & \textbf{Polynomial $B(x,y)$} & \textbf{Rate $k/n$} & \textbf{Interconnects} \\
+\midrule
+BB-72 & $[[72, 12, 6]]$ & $x^3 + y + y^2$ & $y^3 + x + x^2$ & $0.167$ & 6 Non-Local Links \\
+BB-144 & $[[144, 12, 12]]$ & $x^3 + y + y^2$ & $y^3 + x + x^2$ & $0.083$ & 12 Non-Local Links \\
+BB-288 & $[[288, 12, 18]]$ & $x^9 + y^3 + y^{24}$ & $y^9 + x^3 + x^{24}$ & $0.042$ & 24 Non-Local Links \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.88, >=stealth]
+        % Tanner Graph Visualization
+        % Check nodes HX (Top)
+        \foreach \i in {1, 2, 3, 4} {
+            \node[draw, rectangle, fill=quantumviolet!30, line width=1pt, inner sep=3pt] (cx\i) at (\i*2.2 - 5.5, 3) {$H_X^{(\i)}$};
+        }
+        % Variable nodes (Data Qubits Middle)
+        \foreach \j in {1, 2, 3, 4, 5, 6} {
+            \node[draw, circle, fill=darkblue!20, line width=1pt, inner sep=2.5pt] (q\j) at (\j*1.6 - 5.6, 1.5) {$q_{\j}$};
+        }
+        % Check nodes HZ (Bottom)
+        \foreach \k in {1, 2, 3, 4} {
+            \node[draw, rectangle, fill=compilerteal!30, line width=1pt, inner sep=3pt] (cz\k) at (\k*2.2 - 5.5, 0) {$H_Z^{(\k)}$};
+        }
+        
+        % Edges (Sparse non-local connectivity)
+        \draw[line width=0.8pt, color=quantumviolet] (cx1) -- (q1);
+        \draw[line width=0.8pt, color=quantumviolet] (cx1) -- (q2);
+        \draw[line width=0.8pt, color=quantumviolet] (cx1) -- (q5);
+        \draw[line width=0.8pt, color=quantumviolet] (cx2) -- (q2);
+        \draw[line width=0.8pt, color=quantumviolet] (cx2) -- (q3);
+        \draw[line width=0.8pt, color=quantumviolet] (cx2) -- (q6);
+        
+        \draw[line width=0.8pt, color=compilerteal] (cz1) -- (q1);
+        \draw[line width=0.8pt, color=compilerteal] (cz1) -- (q4);
+        \draw[line width=0.8pt, color=compilerteal] (cz2) -- (q2);
+        \draw[line width=0.8pt, color=compilerteal] (cz2) -- (q5);
+        \draw[line width=0.8pt, color=compilerteal] (cz3) -- (q3);
+        \draw[line width=0.8pt, color=compilerteal] (cz3) -- (q6);
+        
+        % Cross-QPU link highlight
+        \draw[line width=1.5pt, color=cautionred, dashed] (cx4) -- (q6);
+        \node[font=\tiny\color{cautionred}, above=2pt] at (3.5, 2.2) {Optical Link};
+    \end{tikzpicture}
+    \caption{Tanner Graph representation of a sparse qLDPC code. Unlike 2D surface codes, check nodes connect to data qubits across non-local distances, implemented via high-speed optical crossbars across QPU chiplets.}
+    \label{fig:qldpc_tanner_graph}
+\end{figure}
+
+% ======================================================================
+% DISTRIBUTED REAL-TIME DECODERS
+% ======================================================================
+\section{Distributed Real-Time Syndrome Decoders}
+\label{sec:distributed_decoders}
+
+In fault-tolerant quantum computing, measurement errors and physical data faults produce non-zero stabilizer syndromes (defects). The decoding problem consists of finding the most likely correction operator $\hat{C} \in \mathcal{P}_n$ given syndrome vector $\vec{s} \in \mathbb{F}_2^{n-k}$:
+\begin{equation}
+    \sigma(\hat{C}) = \vec{s}, \qquad \text{minimizing } \operatorname{wt}(\hat{C}).
+\end{equation}
+
+\subsection{Minimum Weight Perfect Matching (MWPM) vs. Union-Find (UF)}
+\begin{enumerate}
+    \item \textbf{MWPM (Edmonds' Blossom Algorithm):} Matches pairs of defect vertices in the decoding graph to minimize total path distance. Has complexity $\mathcal{O}(V^3)$ (or $\mathcal{O}(V^2 \log V)$ with sparse graph heuristics), providing near-optimal threshold ($p_{\text{th}} \approx 1.0\%$) but suffering from high computational latency ($\sim 10\text{--}100\,\mu\text{s}$).
+    \item \textbf{Union-Find (UF) Linear Decoder (Delfosse-Nickerson):} Grows clusters around defect vertices until clusters have even parity, then computes spanning trees. Has linear time complexity $\mathcal{O}(V \alpha(V)) \approx \mathcal{O}(V)$, enabling sub-microsecond decoding on FPGAs ($p_{\text{th}} \approx 0.9\%$).
+\end{enumerate}
+
+\subsection{The Distributed FPGA Syndrome Backlog Problem}
+In multi-QPU systems, syndrome data streams from hundreds of readout lines at rates exceeding $1\text{ TB/s}$. If decoding latency $\tau_{\text{decode}}$ exceeds the physical syndrome cycle time $\tau_{\text{cycle}} \approx 1\,\mu\text{s}$, a catastrophic \keyterm{Syndrome Backlog} occurs, causing exponential state decay:
+\begin{equation}
+    \text{Backlog Condition: } \quad \tau_{\text{decode}} > \tau_{\text{cycle}} \implies \text{Buffer Overflow \& Coherence Collapse}.
+\end{equation}
+Distributed sliding-window FPGA architectures partition the syndrome graph into overlapping spatial sub-domains, exchanging boundary defect coordinates over dedicated 100 Gbps Aurora links to maintain $\tau_{\text{decode}} \le 650\text{ ns}$.
+
+% ==============================================================================
+% CHAPTER SUMMARY
+% ==============================================================================
+
+\begin{summarybox}{Key Invariants of Chapter 13}
+\begin{enumerate}
+    \item \textbf{Homological Protection:} Surface codes encode logical information into non-trivial homology cycles $H_1(X, \mathbb{F}_2)$, suppressing logical errors exponentially with distance $d$.
+    \item \textbf{EPR Bandwidth Invariant:} Sustaining distributed QEC requires continuous entanglement streams scaling as $R_{\text{EPR}} \ge d / \tau_{\text{cycle}} \approx 27\text{ Mebits/s}$.
+    \item \textbf{Distributed Lattice Surgery:} Non-local logical gates execute by merging boundary stabilizer operators across cryostats using calibrated telegates.
+    \item \textbf{qLDPC Scalability:} Bivariate bicycle codes achieve high encoding rates ($k/n \approx 0.16$), leveraging optical multi-QPU interconnects to reduce physical qubit overhead by $10\times$.
+    \item \textbf{Real-Time Decoding:} Distributed FPGA Union-Find decoders prevent syndrome backlog by matching defect clusters in sub-microsecond streaming windows.
+\end{enumerate}
+\end{summarybox}
+
+% ==============================================================================
+% EXERCISES
+% ==============================================================================
+
+\section*{Exercises}
+\addcontentsline{toc}{section}{Exercises}
+
+\begin{enumerate}[label=\textbf{13.\arabic*.}]
+    \item \textbf{Surface Code Distance Calculation.} For a rotated surface code patch with $n = 289$ physical data qubits, compute the code distance $d$ and the number of syndrome ancilla qubits.
+    \item \textbf{Continuous EPR Rate.} If a distributed surface code has distance $d = 31$ and the syndrome cycle time is $\tau_{\text{cycle}} = 800\text{ ns}$, calculate the minimum continuous physical EPR generation rate required across the inter-cryostat link.
+    \item \textbf{Lattice Surgery Parity Measurement.} Draw the full step-by-step stabilizer merging sequence for an $X$-type lattice surgery merge between two $d=3$ patches located on separate QPUs.
+    \item \textbf{Bivariate Bicycle $[[72, 12, 6]]$ Checks.} Explain why the check operators of a bivariate bicycle code cannot be embedded into a 2D planar nearest-neighbor grid without long-range crossings, and how optical interconnects resolve this topological constraint.
+    \item \textbf{Union-Find Decoding Latency.} For a distributed surface code with distance $d=17$, analyze the maximum allowable latency for an FPGA Union-Find decoder to prevent syndrome backlog.
+    \item \textbf{Threshold Under Link Noise.} If the optical interconnect has raw Bell state fidelity $F = 0.93$, calculate the effective physical error rate of a synthesized boundary CNOT and verify whether it remains below the $p_{\text{th}} \approx 1\%$ surface code threshold.
+\end{enumerate}

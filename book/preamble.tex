@@ -15,7 +15,7 @@
     bottom=2.5cm,
     inner=3.0cm,
     outer=2.5cm,
-    headheight=14pt,
+    headheight=26pt,
     footskip=1.2cm
 ]{geometry}
 
@@ -27,6 +27,7 @@
 \usepackage{mathtools}
 \usepackage{braket} % Dirac notation: \ket{}, \bra{}, \braket{}
 \usepackage{bm}
+\setcounter{MaxMatrixCols}{30}
 
 % --- Graphics & Visualization ---
 \usepackage{graphicx}
@@ -67,6 +68,24 @@
 \definecolor{commentgreen}{RGB}{40, 140, 60}
 \definecolor{keywordblue}{RGB}{25, 70, 180}
 
+% --- Enhanced List Formatting ---
+\usepackage{enumitem}
+\setlist[enumerate]{itemsep=4pt, parsep=2pt}
+\setlist[itemize]{itemsep=4pt, parsep=2pt}
+
+% --- Professional Charts ---
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{fillbetween}
+
+% --- Additional Color Definitions for Design Language ---
+\definecolor{examplegreen}{RGB}{34, 139, 34}
+\definecolor{insightorange}{RGB}{210, 105, 30}
+\definecolor{historybrown}{RGB}{139, 90, 43}
+\definecolor{cautionred}{RGB}{178, 34, 34}
+\definecolor{summaryash}{RGB}{100, 100, 110}
+\definecolor{algorithmnavy}{RGB}{20, 40, 100}
+
 % --- Theorem & Definition Environments ---
 \usepackage{tcolorbox}
 \tcbuselibrary{skins,breakable}
@@ -85,7 +104,7 @@
     colback=white,
     colframe=darkblue,
     fonttitle=\bfseries\color{white},
-    title=Theorem: #1,
+    title={Theorem: #1},
     arc=3mm,
     boxrule=1pt,
     breakable
@@ -95,7 +114,7 @@
     colback=codebg,
     colframe=quantumviolet,
     fonttitle=\bfseries\color{white},
-    title=Hardware Real-World Note: #1,
+    title={Hardware Real-World Note: #1},
     arc=3mm,
     boxrule=1pt,
     breakable
@@ -105,11 +124,100 @@
     colback=codebg,
     colframe=darkblue,
     fonttitle=\bfseries\color{white},
-    title=Compiler Pass Mechanics: #1,
+    title={Compiler Pass Mechanics: #1},
     arc=3mm,
     boxrule=1pt,
     breakable
 }
+
+% --- NEW DESIGN LANGUAGE ENVIRONMENTS ---
+
+% Worked Examples: Step-by-step walkthroughs with green accents
+\newtcolorbox{examplebox}[1]{
+    colback=examplegreen!5,
+    colframe=examplegreen,
+    fonttitle=\bfseries\color{white},
+    title={Worked Example: #1},
+    arc=3mm,
+    boxrule=1.2pt,
+    breakable,
+    left=6pt,
+    right=6pt,
+    top=4pt,
+    bottom=4pt
+}
+
+% Insight Boxes: "Why This Matters" intuition builders
+\newtcolorbox{insightbox}[1]{
+    colback=insightorange!5,
+    colframe=insightorange,
+    fonttitle=\bfseries\color{white},
+    title={Why This Matters: #1},
+    arc=3mm,
+    boxrule=1.2pt,
+    breakable,
+    left=6pt,
+    right=6pt
+}
+
+% Historical Context: Origin stories and milestones
+\newtcolorbox{historicalbox}[1]{
+    colback=historybrown!5,
+    colframe=historybrown,
+    fonttitle=\bfseries\color{white},
+    title={Historical Context: #1},
+    arc=3mm,
+    boxrule=1.2pt,
+    breakable,
+    left=6pt,
+    right=6pt
+}
+
+% Caution Boxes: Warnings, common mistakes, pitfalls
+\newtcolorbox{cautionbox}[1]{
+    colback=cautionred!5,
+    colframe=cautionred,
+    fonttitle=\bfseries\color{white},
+    title={Caution: #1},
+    arc=3mm,
+    boxrule=1.2pt,
+    breakable,
+    left=6pt,
+    right=6pt
+}
+
+% Algorithm Boxes: Pseudocode and formal procedures
+\newtcolorbox{algorithmbox}[1]{
+    colback=algorithmnavy!3,
+    colframe=algorithmnavy,
+    fonttitle=\bfseries\color{white},
+    title={Algorithm: #1},
+    arc=3mm,
+    boxrule=1.2pt,
+    breakable,
+    left=6pt,
+    right=6pt
+}
+
+% Section Summary Boxes: Recap of key points
+\newtcolorbox{summarybox}[1]{
+    colback=summaryash!8,
+    colframe=summaryash,
+    fonttitle=\bfseries\color{white},
+    title={Chapter Summary: #1},
+    arc=3mm,
+    boxrule=1.2pt,
+    breakable,
+    left=6pt,
+    right=6pt
+}
+
+% --- Custom Terminology Commands ---
+% Highlighted key terms (bold + colored)
+\newcommand{\keyterm}[1]{\textbf{\textcolor{compilerteal}{#1}}}
+
+% MLIR keywords in monospace with compiler color
+\newcommand{\mlirkw}[1]{\texttt{\textcolor{keywordblue}{#1}}}
 
 % --- Code Listings (MLIR, LLVM IR, C++) ---
 \usepackage{listings}

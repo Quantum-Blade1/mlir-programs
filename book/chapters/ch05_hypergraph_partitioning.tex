@@ -5,16 +5,30 @@
 \textit{``In monolithic compilers, placement and routing are geometric optimizations over silicon planar graphs. In distributed quantum compilation, partitioning is a high-dimensional combinatorial battle against entanglement consumption.''}
 \end{quote}
 
-A fundamental task of a distributed quantum compiler is mapping a monolithic quantum circuit consisting of $n$ logical qubits and $G$ quantum operations onto an ensemble of $M$ discrete Quantum Processing Units (QPUs), denoted $\mathcal{P} = \{P_1, P_2, \dots, P_M\}$. Each QPU $P_m$ is constrained by a finite physical qubit capacity $C_m$, cryogenic wiring limits, and internal coupling topologies. 
+% ======================================================================
+% OPENING NARRATIVE
+% ======================================================================
+\section*{Chapter Overview: Taming the Multi-QPU Communication Bottleneck}
 
-Whenever an entangling operation (e.g., a CNOT, CZ, or SWAP) acts across qubits assigned to different QPUs, a physical quantum interconnect transaction is mandated. Because physical entanglement is an extremely scarce and fragile resource, minimizing inter-QPU communication is the primary objective of circuit distribution. This chapter formalizes the circuit partitioning problem, analyzes why standard graph models fail, establishes the hypergraph representation of quantum computation, proves its computational complexity, and details the multi-level algorithms that power modern distributed quantum compilers.
+In a classical multicore processor or distributed cloud cluster, allocating computational tasks to different servers requires balancing compute load against network bandwidth. If Server 1 needs data from Server 2, it issues an HTTP, gRPC, or MPI request. While high latency is undesirable, sending a million Ethernet packets does not destroy the server's CPU registers, disrupt memory voltage levels, or corrupt neighboring data structures.
+
+In distributed quantum computing, inter-processor communication is an existential threat to the computation itself. Every non-local two-qubit gate acting across two discrete Quantum Processing Units (QPUs):
+\begin{enumerate}
+    \item Consumes a fragile physical \keyterm{EPR pair} that required hundreds of microseconds of laser pulsing, spontaneous emission, and optical routing to generate and distill;
+    \item Exposes participating matter qubits to prolonged communication buffer idle times, triggering rapid $T_2^*$ dephasing and irreversible phase damping;
+    \item Incurs physical gate error rates that are an order of magnitude higher than local on-chip operations ($99.5\%\text{--}99.9\%$ local fidelity vs $90\%\text{--}95\%$ remote fidelity).
+\end{enumerate}
+
+Therefore, the quality of a distributed quantum compiler is determined first and foremost by its \textbf{partitioning pass}. Given a quantum algorithm with $n$ logical qubits and $G$ entangling gates, how do we assign qubits to $M$ discrete QPUs such that the total number of cross-QPU interactions is mathematically minimized while strictly respecting physical hardware capacity limits?
+
+This chapter formalizes the circuit partitioning problem from first principles. We reveal why classical graph-based partitioners (such as standard METIS or Scotch) catastrophically fail on quantum circuits due to the \keyterm{clique expansion pathology}, formulate the exact \keyterm{Hypergraph Representation} of quantum circuits, prove the NP-completeness of optimal quantum partitioning, formulate the exact Mixed-Integer Linear Program (MILP), explore Spectral Hypergraph Partitioning and Cheeger inequalities, and detail the state-of-the-art \keyterm{Multi-Level Hypergraph Partitioning} (KaHyPar) algorithms that power production distributed quantum compilers.
 
 % ==============================================================================
 \section{The Circuit Partitioning Problem}
 \label{sec:partitioning_formulation}
 % ==============================================================================
 
-Consider an input quantum circuit $\mathcal{C} = (Q, \mathcal{G})$, where $Q = \{q_0, q_1, \dots, q_{n-1}\}$ is the set of $n$ logical qubits, and $\mathcal{G} = \{g_1, g_2, \dots, g_{|\mathcal{G}|}\}$ is a time-ordered sequence of gate operations. The target distributed hardware consists of $M$ QPUs with capacities $\bm{C} = (C_1, C_2, \dots, C_M)$ such that $\sum_{m=1}^M C_m \ge n$.
+Consider an input quantum circuit $\mathcal{C} = (Q, \mathcal{G})$, where $Q = \{q_0, q_1, \dots, q_{n-1}\}$ is the set of $n$ logical qubits, and $\mathcal{G} = \{g_1, g_2, \dots, g_{|\mathcal{G}|}\}$ is a time-ordered sequence of gate operations. The target distributed hardware consists of $M$ discrete QPUs with physical capacities $\bm{C} = (C_1, C_2, \dots, C_M)$ such that the aggregate cluster capacity satisfies $\sum_{m=1}^M C_m \ge n$.
 
 \subsection{Mathematical Definition of a Valid Partition}
 A static qubit partition is a mapping function $\pi: Q \to \{1, 2, \dots, M\}$ assigning every logical qubit to exactly one physical QPU.
@@ -26,11 +40,21 @@ A partition $\pi$ is valid and $(\epsilon)$-balanced if:
     \item \textbf{Capacity Invariant:} For every QPU $P_m$, the allocated qubit count satisfies:
     \begin{equation}
         |\pi^{-1}(m)| \le C_m \le (1 + \epsilon) \left\lceil \frac{n}{M} \right\rceil,
-        \label{eq:capacity_constraint}
+        \label{eq:capacity_constraint_ch5}
     \end{equation}
-    where $\epsilon \ge 0$ is the allowed imbalance tolerance parameter (typically $\epsilon \in [0.03, 0.10]$).
+    where $\epsilon \ge 0$ is the allowed imbalance tolerance parameter (typically $\epsilon \in [0.03, 0.10]$ in production compilers).
 \end{enumerate}
 \end{definitionbox}
+
+\subsection{Multi-Constraint Quantum Physical Heterogeneity}
+In practical multi-QPU systems, QPUs are not homogeneous black boxes. A production compiler must account for multi-dimensional physical constraints simultaneously:
+
+\begin{enumerate}
+    \item \textbf{Qubit Capacity Vector:} Each QPU $m$ has a maximum physical data qubit register size $C_m$ and an ancilla communication register size $A_m$.
+    \item \textbf{Coherence Life-Budget:} If QPU $m$ has median dephasing time $T_2^*(m)$, the total circuit depth mapped to QPU $m$ must satisfy $\sum_{g \in \mathcal{G}_m} t_{\text{exec}}(g) \le \alpha T_2^*(m)$, where $\alpha \approx 0.1\text{--}0.2$ is a safety margin against error accumulation.
+    \item \textbf{Inter-QPU Network Bandwidth Matrix:} The physical optical link between QPU $i$ and QPU $j$ supports an EPR generation rate $R_{ij}$ (ebits/second). The total ebits consumed during any execution time window $\Delta t$ cannot exceed $R_{ij} \cdot \Delta t$.
+    \item \textbf{Link Quality Heterogeneity:} Link $(i, j)$ provides raw EPR pairs with base fidelity $F_{0, ij}$. High-noise links require more entanglement distillation rounds, scaling raw ebit consumption by a penalty multiplier $\eta(F_{0, ij}) = \frac{1}{\log_2(1 + F_{0, ij})}$.
+\end{enumerate}
 
 \subsection{Objective Functions: Cut-Size vs. Connectivity Metric}
 Given a two-qubit gate $g = \text{CNOT}(q_i, q_j)$, the gate is local if $\pi(q_i) = \pi(q_j)$. If $\pi(q_i) \neq \pi(q_j)$, the gate is \textbf{non-local}, requiring at least one EPR pair and classical signaling. The total communication cost functional $\Phi(\pi)$ can be formulated in two primary ways:
@@ -39,14 +63,14 @@ Given a two-qubit gate $g = \text{CNOT}(q_i, q_j)$, the gate is local if $\pi(q_
     \item \textbf{Cut-Gate Count (Direct Sum):}
     \begin{equation}
         \Phi_{\text{cut}}(\pi) = \sum_{g = (q_i, q_j) \in \mathcal{G}_{2Q}} w(g) \cdot \mathbb{I}\left[\pi(q_i) \neq \pi(q_j)\right],
-        \label{eq:cut_gate_count}
+        \label{eq:cut_gate_count_ch5}
     \end{equation}
     where $\mathbb{I}[\cdot]$ is the indicator function and $w(g)$ is the communication weight (e.g., $w=1$ for CNOT, $w=2$ for SWAP, $w=3$ for Toffoli).
     
-    \item \textbf{$(\lambda - 1)$ Metric (Spanning Connectivity Metric):} For multi-qubit interactions or tele-data routing where a state is broadcast or distributed across multiple QPUs, each hyperedge $e$ spans $\lambda(e) = |\{\pi(v) : v \in e\}|$ distinct QPUs. The communication cost scales as:
+    \item \textbf{$(\lambda - 1)$ Metric (Spanning Connectivity Metric):} For multi-qubit interactions or tele-data routing where a state or control signal is broadcast across multiple QPUs, each hyperedge $e$ spans $\lambda(e) = |\{\pi(v) : v \in e\}|$ distinct QPUs. The communication cost scales as:
     \begin{equation}
         \Phi_{\lambda - 1}(\pi) = \sum_{e \in \mathcal{E}} w(e) \left( \lambda(e) - 1 \right).
-        \label{eq:lambda_minus_one}
+        \label{eq:lambda_minus_one_ch5}
     \end{equation}
 \end{enumerate}
 
@@ -59,7 +83,7 @@ In classical VLSI circuit design, a circuit is frequently abstracted as a standa
 
 \begin{figure}[htbp]
     \centering
-    \begin{tikzpicture}[scale=0.9, >=stealth]
+    \begin{tikzpicture}[scale=0.92, >=stealth]
         % Circuit representation on Left
         \node[font=\bfseries\color{darkblue}] at (-3, 2.5) {(a) Quantum Gate Sequence};
         \draw[line width=1pt] (-5, 1.5) node[left] {$q_0$} -- (-1, 1.5);
@@ -84,186 +108,493 @@ In classical VLSI circuit design, a circuit is frequently abstracted as a standa
         \node[font=\tiny, above] at (-2, 0.7) {CX};
 
         % Graph clique expansion (Middle) - INACCURATE
-        \node[font=\bfseries\color{red!80!black}] at (1.5, 2.5) {(b) Graph Clique (Inaccurate)};
-        \node[draw, circle, fill=blue!20, font=\footnotesize] (g0) at (1.5, 1.5) {$q_0$};
-        \node[draw, circle, fill=blue!20, font=\footnotesize] (g1) at (0.3, -0.3) {$q_1$};
-        \node[draw, circle, fill=blue!20, font=\footnotesize] (g2) at (2.7, -0.3) {$q_2$};
-        \draw[line width=1.5pt, red!70!black] (g0) -- node[above left, font=\tiny] {$w=1$} (g1);
-        \draw[line width=1.5pt, red!70!black] (g0) -- node[above right, font=\tiny] {$w=1$} (g2);
-        \draw[line width=2.5pt, red!70!black] (g1) -- node[below, font=\tiny] {$w=2$ (Over-counted!)} (g2);
-
-        % Hypergraph representation (Right) - ACCURATE
-        \node[font=\bfseries\color{compilerteal}] at (6, 2.5) {(c) Hypergraph (Exact)};
-        \node[draw, circle, fill=blue!20, font=\footnotesize] (h0) at (6, 1.5) {$q_0$};
-        \node[draw, circle, fill=blue!20, font=\footnotesize] (h1) at (4.8, -0.3) {$q_1$};
-        \node[draw, circle, fill=blue!20, font=\footnotesize] (h2) at (7.2, -0.3) {$q_2$};
+        \node[font=\bfseries\color{cautionred}] at (2.5, 2.5) {(b) Graph Clique Expansion};
+        \node[draw, circle, fill=blue!10, line width=1pt] (vq0) at (1.5, 1.5) {$q_0$};
+        \node[draw, circle, fill=blue!10, line width=1pt] (vq1) at (3.5, 1.5) {$q_1$};
+        \node[draw, circle, fill=blue!10, line width=1pt] (vq2) at (2.5, -0.2) {$q_2$};
         
-        % Hyperedge enclosing all three
-        \draw[rounded corners=4mm, fill=compilerteal!15, draw=compilerteal, line width=1.2pt, opacity=0.7] 
-            (4.3, -0.6) rectangle (7.7, 1.9);
-        \node[font=\tiny\bfseries\color{compilerteal}] at (7.3, 1.6) {$e_{\text{CCX}}$};
+        \draw[line width=1.5pt, color=cautionred] (vq0) -- node[above, font=\tiny] {$w=1$} (vq1);
+        \draw[line width=1.5pt, color=cautionred] (vq1) -- node[right, font=\tiny] {$w=2$} (vq2);
+        \draw[line width=1.5pt, color=cautionred] (vq0) -- node[left, font=\tiny] {$w=1$} (vq2);
+        \node[font=\tiny\color{cautionred}, align=center] at (2.5, -1.0) {Artificially dense\\Edge cut $\neq$ Communication cost!};
         
-        % 2-qubit hyperedge enclosing q1, q2
-        \draw[rounded corners=3mm, draw=quantumviolet, line width=1.2pt, dashed] 
-            (4.5, -0.55) rectangle (7.5, 0.1);
-        \node[font=\tiny\bfseries\color{quantumviolet}] at (6, -0.8) {$e_{\text{CX}}$};
+        % Hypergraph representation (Right) - EXACT
+        \node[font=\bfseries\color{compilerteal}] at (7.5, 2.5) {(c) Exact Hypergraph Model};
+        \node[draw, circle, fill=blue!10, line width=1pt] (hq0) at (6.5, 1.5) {$q_0$};
+        \node[draw, circle, fill=blue!10, line width=1pt] (hq1) at (8.5, 1.5) {$q_1$};
+        \node[draw, circle, fill=blue!10, line width=1pt] (hq2) at (7.5, -0.2) {$q_2$};
+        
+        % Hyperedge enclosing all 3
+        \draw[rounded corners=4mm, fill=green!15, draw=compilerteal, line width=1.5pt, opacity=0.6] 
+            (5.8, 1.9) rectangle (9.2, -0.7);
+        \node[font=\scriptsize\bfseries\color{compilerteal}] at (7.5, -0.9) {Hyperedge $e_1 = \{q_0, q_1, q_2\}$};
     \end{tikzpicture}
-    \caption{Comparison of quantum circuit abstractions. (a) A sequence containing a 3-qubit Toffoli (CCX) and a 2-qubit CNOT. (b) Standard graph clique expansion over-counts cut costs because cutting one vertex induces artificial independent edge cuts. (c) Hypergraph representation encapsulates multi-qubit gates precisely as single hyperedges without distortion.}
-    \label{fig:hypergraph_vs_clique}
+    \caption{Comparison of quantum circuit abstractions. (a) Quantum circuit containing multi-qubit and two-qubit operations. (b) Standard graph clique expansion introduces false pairwise edges, distorting cut calculations. (c) Exact hypergraph model represents multi-qubit interactions as single hyperedges spanning vertex sets, preserving true communication topology.}
+    \label{fig:hypergraph_clique_distortion}
 \end{figure}
 
-\subsection{The Clique Expansion Pathology}
-When a multi-qubit operation (such as a Toffoli, Fredkin, or multi-controlled phase gate) acts on $k \ge 3$ qubits, a standard graph must approximate this interaction by creating a complete graph clique $K_k$ with $\binom{k}{2} = \frac{k(k-1)}{2}$ edges.
-
-\begin{theorembox}{Metric Distortion of Standard Graph Models}
-Let a $k$-qubit gate act across a boundary separating QPU $P_1$ from $P_2$, with $k_1 \ge 1$ qubits in $P_1$ and $k_2 \ge 1$ qubits in $P_2$ ($k_1 + k_2 = k$). 
-In a physical multi-QPU architecture, the non-local implementation of the gate requires exactly $k_c$ distributed entanglement operations ($k_c \le 2\min(k_1, k_2)$).
-However, a standard graph clique model evaluates the cut edge weight as:
+\begin{theorembox}{The Clique Expansion Distortion Theorem}
+Let $\mathcal{H} = (V, \mathcal{E})$ be a hypergraph containing a multi-qubit operation $e = \{v_1, v_2, \dots, v_k\}$ of size $k \ge 3$. Replacing hyperedge $e$ with a clique of $\binom{k}{2}$ standard pairwise graph edges causes any graph partitioner optimizing an edge-cut objective to overestimate the communication cost by a factor of up to:
 \begin{equation}
-    W_{\text{clique\_cut}} = k_1 \cdot k_2.
-    \label{eq:clique_error}
+    \rho_{\text{distortion}} = \left\lfloor \frac{k}{2} \right\rfloor \cdot \left\lceil \frac{k}{2} \right\rceil \ge \frac{k^2 - 1}{4}.
+    \label{eq:clique_distortion_bound}
 \end{equation}
-When $k_1 = k_2 = k/2$, $W_{\text{clique\_cut}} = \frac{k^2}{4}$, representing an artificial $\mathcal{O}(k)$ quadratic over-estimation of the physical communication cost. Graph partitioning algorithms optimizing $W_{\text{clique\_cut}}$ diverge severely from physical optimality.
-\end{theorembox}
-
-\subsection{Formal Hypergraph Definition for Quantum Compilers}
-To eliminate clique distortion, the distributed compiler constructs an interaction hypergraph $\mathcal{H} = (\mathcal{V}, \mathcal{E})$:
-\begin{itemize}
-    \item \textbf{Vertex Set $\mathcal{V}$:} Each vertex $v_i \in \mathcal{V}$ represents either:
-    \begin{enumerate}
-        \item A physical qubit line $q_i$ (in \textit{spatial hypergraph partitioning}), or
-        \item A spatio-temporal qubit segment $q_{i, t}$ between time steps $t_1$ and $t_2$ (in \textit{spatio-temporal hypergraph partitioning}).
-    \end{enumerate}
-    \item \textbf{Hyperedge Set $\mathcal{E}$:} Each hyperedge $e \in \mathcal{E}$ is an arbitrary subset of vertices $e \subseteq \mathcal{V}$. For every gate $g \in \mathcal{G}$ operating on qubits $\text{targets}(g) \subseteq Q$, we insert a hyperedge $e_g = \text{targets}(g)$ with weight $w(e_g)$ proportional to the EPR consumption of the gate.
-\end{itemize}
-
-Under the hypergraph model, an entangling gate incurs communication cost if and only if its hyperedge spans across more than one partition block. The $(\lambda - 1)$ metric reflects the exact physical quantity of tele-data or EPR channels consumed.
-
-% ==============================================================================
-\section{Computational Complexity and NP-Hardness Proof}
-\label{sec:np_hardness}
-% ==============================================================================
-
-Can a compiler find the mathematically optimal qubit placement in polynomial time? We now prove that balanced hypergraph partitioning for distributed quantum compilation is strictly NP-hard.
-
-\begin{theorembox}{NP-Hardness of Multi-QPU Quantum Partitioning}
-The decision problem \textsc{Quantum-Circuit-Bipartition} ($M=2$, $\epsilon = 0$), which asks whether there exists a valid partition $\pi: Q \to \{1, 2\}$ with $|\pi^{-1}(1)| = |\pi^{-1}(2)| = n/2$ such that the communication cut cost $\Phi(\pi) \le K$, is NP-complete.
 \end{theorembox}
 
 \begin{proof}
-We prove NP-completeness by polynomial-time reduction from the classical \textsc{Minimum-Bisection} problem on graphs, which is known to be NP-hard.
+Consider a bisection of the vertices into two partitions $P_1$ and $P_2$. Suppose $k_1$ vertices of $e$ are assigned to $P_1$ and $k_2 = k - k_1$ vertices are assigned to $P_2$, with $k_1, k_2 \ge 1$. In the true physical circuit, broadcasting the control state requires exactly 1 non-local communication channel ($(\lambda - 1) = 2 - 1 = 1$). 
 
-\textbf{Step 1: Verification in NP.} Given a candidate partition certificate $\pi: Q \to \{1, 2\}$, a verification algorithm computes the size of each partition $|\pi^{-1}(m)|$ in $\mathcal{O}(n)$ time and evaluates the cut metric $\Phi(\pi) = \sum_{e \in \mathcal{E}} w(e) (\lambda(e) - 1)$ by inspecting each hyperedge in $\mathcal{O}(\sum |e|)$ time. Since the total hypergraph size is linear in circuit gate count $|\mathcal{G}|$, verification terminates in polynomial time $\mathcal{O}(n + |\mathcal{G}|)$. Hence, the problem is in NP.
-
-\textbf{Step 2: Reduction from Minimum Bisection.} Let $G = (V, E)$ be an arbitrary instance of \textsc{Minimum-Bisection} with an even number of vertices $|V| = n$ and an integer bound $K$. We construct a distributed quantum compilation instance $\mathcal{H} = (\mathcal{V}, \mathcal{E})$ in polynomial time as follows:
-\begin{enumerate}
-    \item For every classical vertex $v_i \in V$, instantiate a logical qubit $q_i \in \mathcal{V}$. Thus $\mathcal{V} = Q$ and $|\mathcal{V}| = n$.
-    \item For every classical edge $(u, v) \in E$, instantiate a quantum hyperedge $e = \{u, v\}$ of cardinality $|e| = 2$, corresponding to a non-local $\text{CNOT}(u, v)$ gate with weight $w(e) = 1$.
-    \item Set QPU capacities $C_1 = C_2 = n/2$ and communication bound $K' = K$.
-\end{enumerate}
-
-\textbf{Step 3: Equivalence of Solutions.} 
-A partition $\pi: V \to \{1, 2\}$ bisects graph $G$ with cut size at most $K$ if and only if the identical assignment of qubits to QPUs $P_1$ and $P_2$ satisfies $|\pi^{-1}(1)| = |\pi^{-1}(2)| = n/2$ and incurs a non-local gate communication cost:
-\begin{equation}
-    \Phi(\pi) = \sum_{e=\{u, v\} \in E} \mathbb{I}[\pi(u) \neq \pi(v)] \le K.
-\end{equation}
-Because the reduction is polynomial in both space and time, \textsc{Quantum-Circuit-Bipartition} is NP-hard. Combined with Step 1, the problem is NP-complete.
+In the clique-expanded graph, the number of cut edges crossing the boundary between $P_1$ and $P_2$ is $k_1 \cdot k_2$. Maximizing over all valid bisections with $k_1 = \lfloor k/2 \rfloor$ and $k_2 = \lceil k/2 \rceil$ yields an edge cut of $\lfloor k/2 \rfloor \cdot \lceil k/2 \rceil$. For a 4-qubit gate, the graph partitioner sees an apparent cut cost of $2 \times 2 = 4$, overestimating communication by $400\%$.
 \end{proof}
 
-\begin{hardwarebox}{Implications for Practical Compilers}
-Because optimal partitioning is NP-complete, exact solvers (e.g., Integer Linear Programming via Gurobi or Z3 SMT solvers) scale exponentially as $\mathcal{O}(2^n)$ or $\mathcal{O}(M^n)$. For circuits with $n \ge 50$ qubits and millions of gates, exact formulation becomes intractable. Distributed quantum compilers must therefore employ multi-level heuristic approximation engines that guarantee bounded runtime $\mathcal{O}(|\mathcal{V}| + |\mathcal{E}| \log |\mathcal{V}|)$ while maintaining solution quality within $2\text{--}5\%$ of theoretical optimality.
-\end{hardwarebox}
-
 % ==============================================================================
-\section{Multi-Level Hypergraph Partitioning Algorithms}
-\label{sec:multilevel_algorithms}
+\section{Complexity and Mixed-Integer Linear Programming (MILP)}
+\label{sec:milp_formulation}
 % ==============================================================================
 
-Modern state-of-the-art quantum compiler partitioning passes (such as the integration of KaHyPar into the DQC pipeline) rely on the **Multi-level Paradigm**. The multi-level approach decomposes the high-dimensional problem into three distinct algorithmic phases: Coarsening, Initial Partitioning, and Uncoarsening (Refinement).
+\subsection{NP-Completeness Proof}
+\begin{theorembox}{NP-Completeness of Quantum Hypergraph Partitioning}
+The decision problem \textsc{Quantum-Hypergraph-Partition} (determining whether there exists an $\epsilon$-balanced partition $\pi$ of circuit $\mathcal{C}$ into $M$ QPUs with communication cost $\Phi(\pi) \le K$) is NP-complete for any $M \ge 2$.
+\end{theorembox}
+
+\begin{proof}
+\textbf{1. Membership in NP:} Given a candidate partition $\pi: Q \to \{1, \dots, M\}$, verifying the capacity constraint $\sum_{v \in \pi^{-1}(m)} w(v) \le C_m$ and computing the objective $\Phi_{\lambda-1}(\pi) = \sum_{e \in \mathcal{E}} w(e)(\lambda(e) - 1)$ requires evaluating $|\mathcal{E}|$ hyperedge intersections, which executes in polynomial time $\mathcal{O}(|\mathcal{E}| \cdot \max_e |e|)$.
+
+\textbf{2. NP-Hardness (Reduction from MIN-CUT):} We reduce the classical NP-hard Hypergraph Bisection problem to \textsc{Quantum-Hypergraph-Partition}. Let $\mathcal{H}_0 = (V_0, \mathcal{E}_0)$ be an arbitrary hypergraph with unit vertex weights. For each vertex $v \in V_0$, instantiate a logical qubit $q_v$. For each hyperedge $e \in \mathcal{E}_0$, construct an entangling multi-qubit gate acting on $\{q_u \mid u \in e\}$. Set $M = 2$ QPUs with capacity $C_1 = C_2 = \lceil |V_0|/2 \rceil$. A minimum communication partition in the quantum circuit corresponds precisely to a minimum hyperedge cut in $\mathcal{H}_0$. Thus, optimal quantum partitioning is NP-hard.
+\end{proof}
+
+\subsection{Exact Heterogeneous MILP Formulation}
+For small and medium circuits ($n \le 32$ qubits), exact global optima can be computed using Mixed-Integer Linear Programming.
+
+\textbf{Decision Variables:}
+\begin{itemize}
+    \item $x_{iv} \in \{0, 1\}$: Binary variable equal to 1 if qubit $v \in Q$ is placed on QPU $i \in \{1, \dots, M\}$.
+    \item $y_{ie} \in \{0, 1\}$: Binary variable equal to 1 if hyperedge $e \in \mathcal{E}$ intersects QPU $i$.
+    \item $z_{ije} \in [0, 1]$: Continuous communication load between QPU $i$ and QPU $j$ due to hyperedge $e$.
+\end{itemize}
+
+\textbf{MILP Mathematical Model:}
+\begin{align}
+    \min_{x, y, z} \quad & \sum_{e \in \mathcal{E}} w(e) \left( \sum_{i=1}^M y_{ie} - 1 \right) + \beta \sum_{e \in \mathcal{E}} \sum_{i=1}^M \sum_{j > i}^M \frac{w(e)}{F_{ij}} z_{ije} \label{eq:milp_objective} \\
+    \text{subject to} \quad & \sum_{i=1}^M x_{iv} = 1, \quad \forall v \in Q \label{eq:milp_assignment} \\
+    & \sum_{v \in Q} x_{iv} \le C_i, \quad \forall i \in \{1, \dots, M\} \label{eq:milp_capacity} \\
+    & y_{ie} \ge x_{iv}, \quad \forall e \in \mathcal{E}, \, \forall v \in e, \, \forall i \in \{1, \dots, M\} \label{eq:milp_hyperedge_link} \\
+    & z_{ije} \ge x_{iu} + x_{jv} - 1, \quad \forall e \in \mathcal{E}, \, \forall u, v \in e, \, \forall i \neq j \label{eq:milp_link_load} \\
+    & \sum_{e \in \mathcal{E}} z_{ije} \le B_{ij}, \quad \forall i < j \label{eq:milp_bandwidth_limit} \\
+    & x_{iv} \in \{0, 1\}, \quad y_{ie} \in \{0, 1\}, \quad z_{ije} \ge 0. \label{eq:milp_integrality}
+\end{align}
+
+Constraint~\eqref{eq:milp_assignment} guarantees every qubit is placed on exactly one QPU. Constraint~\eqref{eq:milp_capacity} enforces QPU physical qubit capacity. Constraint~\eqref{eq:milp_hyperedge_link} forces $y_{ie} = 1$ if any qubit belonging to hyperedge $e$ is placed on QPU $i$. Constraint~\eqref{eq:milp_bandwidth_limit} strictly bounds traffic over link $(i, j)$ to available bandwidth $B_{ij}$.
+
+% ==============================================================================
+\section{Spectral Hypergraph Partitioning and Cheeger Inequalities}
+\label{sec:spectral_hypergraph}
+% ==============================================================================
+
+Beyond combinatorial heuristics, spectral methods provide continuous algebraic bounds on the minimum communication cut by analyzing the spectrum of the hypergraph Laplacian.
+
+\subsection{The Normalized Hypergraph Laplacian}
+Let $\mathcal{H} = (V, \mathcal{E})$ be a hypergraph with vertex set $V$, hyperedge set $\mathcal{E}$, vertex degrees $d(v) = \sum_{e \in \mathcal{E}: v \in e} w(e)$, and hyperedge degrees $\delta(e) = |e|$. We define the incidence matrix $H \in \mathbb{R}^{|V| \times |\mathcal{E}|}$ as:
+\begin{equation}
+    H_{v, e} = \begin{cases} 1 & \text{if } v \in e, \\ 0 & \text{otherwise.} \end{cases}
+\end{equation}
+Let $D_v \in \mathbb{R}^{|V| \times |V|}$ and $D_e \in \mathbb{R}^{|\mathcal{E}| \times |\mathcal{E}|}$ be diagonal degree matrices, and $W_e \in \mathbb{R}^{|\mathcal{E}| \times |\mathcal{E}|}$ be the diagonal hyperedge weight matrix. The \textbf{normalized hypergraph Laplacian} $\Delta_{\mathcal{H}}$ is defined as:
+\begin{equation}
+    \Delta_{\mathcal{H}} = I - D_v^{-1/2} H W_e D_e^{-1} H^T D_v^{-1/2}.
+    \label{eq:hypergraph_laplacian}
+\end{equation}
+
+\begin{theorembox}{Cheeger Inequality for Hypergraph Bisection}
+Let $\lambda_2$ be the second smallest eigenvalue (Fiedler eigenvalue) of $\Delta_{\mathcal{H}}$, and let $h(\mathcal{H})$ be the Cheeger hypergraph conductance constant:
+\begin{equation}
+    h(\mathcal{H}) = \min_{S \subset V, 0 < \text{vol}(S) \le \frac{1}{2}\text{vol}(V)} \frac{|\partial S|}{\text{vol}(S)}.
+\end{equation}
+Then the optimal bisection cut is bounded by:
+\begin{equation}
+    \frac{h(\mathcal{H})^2}{2} \le \lambda_2 \le 2 h(\mathcal{H}).
+    \label{eq:cheeger_hypergraph}
+\end{equation}
+\end{theorembox}
+
+\begin{proof}
+The proof follows by constructing the Rayleigh quotient $\mathcal{R}(f) = \frac{\langle f, \Delta_{\mathcal{H}} f \rangle}{\langle f, f \rangle}$ for a test vector $f = D_v^{1/2} (\mathbb{I}_S - \frac{\text{vol}(S)}{\text{vol}(V)}\bm{1})$, applying Cauchy-Schwarz across hyperedge pin incidence sums, and bounding the Dirichlet form $\sum_{e \in \mathcal{E}} \frac{w(e)}{\delta(e)} \sum_{u, v \in e} \left( \frac{f(u)}{\sqrt{d(u)}} - \frac{f(v)}{\sqrt{d(v)}} \right)^2$.
+\end{proof}
+
+The Fiedler eigenvector $v_2$ corresponding to $\lambda_2$ provides a continuous 1D geometric embedding of qubits: sorting qubits by their component values in $v_2$ and sweeping a splitting threshold generates high-quality seed partitions for the multi-level uncoarsening pipeline.
+
+% ==============================================================================
+\section{The KaHyPar Multi-Level Partitioning Framework}
+\label{sec:kahypar_framework}
+% ==============================================================================
+
+For large quantum circuits ($n = 50\text{ to }10,000$ qubits), MILP solvers encounter exponential runtime branch-and-bound explosions. Modern compilers employ \keyterm{Multi-Level Hypergraph Partitioning} (KaHyPar framework), structured into three distinct phases:
 
 \begin{figure}[htbp]
     \centering
     \begin{tikzpicture}[scale=0.9, >=stealth]
-        % Downward Coarsening V-Cycle
-        \node[draw, rectangle, fill=blue!10, rounded corners=2mm, font=\small\bfseries, align=center] (h0) at (0, 4) {$\mathcal{H}_0 = \mathcal{H}$ (Fine Graph)\\$|V_0| = 1000, |E_0| = 5000$};
-        \node[draw, rectangle, fill=blue!15, rounded corners=2mm, font=\small\bfseries, align=center] (h1) at (0, 2.2) {$\mathcal{H}_1$ (Coarsened)\\$|V_1| = 500, |E_1| = 2800$};
-        \node[draw, rectangle, fill=blue!20, rounded corners=2mm, font=\small\bfseries, align=center] (h2) at (0, 0.4) {$\mathcal{H}_2$ (Coarsened)\\$|V_2| = 250, |E_2| = 1500$};
-        \node[draw, rectangle, fill=purple!20, rounded corners=2mm, font=\small\bfseries, align=center] (hk) at (4, -1.2) {$\mathcal{H}_k$ (Base Coarse Graph)\\$|V_k| \le 50$\\Exact / Evolutionary Solve};
+        % V-Cycle Structure
+        % Coarsening (Left side descending)
+        \draw[rounded corners=2mm, fill=blue!10, draw=darkblue, line width=1pt] (-5, 4) rectangle (-1, 4.8);
+        \node[font=\footnotesize\bfseries\color{darkblue}] at (-3, 4.4) {$\mathcal{H}_0$ (Original Circuit)};
         
-        % Upward Refinement V-Cycle
-        \node[draw, rectangle, fill=green!15, rounded corners=2mm, font=\small\bfseries, align=center] (r2) at (8, 0.4) {$\mathcal{H}_2$ Refined\\FM / Local Search};
-        \node[draw, rectangle, fill=green!15, rounded corners=2mm, font=\small\bfseries, align=center] (r1) at (8, 2.2) {$\mathcal{H}_1$ Refined\\Flow-Based Boundary};
-        \node[draw, rectangle, fill=green!20, rounded corners=2mm, font=\small\bfseries, align=center] (r0) at (8, 4) {$\mathcal{H}_0$ Final Partition\\Global Solution $\pi^*$ Target};
+        \draw[rounded corners=2mm, fill=blue!15, draw=darkblue, line width=1pt] (-4.5, 2.5) rectangle (-1.5, 3.3);
+        \node[font=\footnotesize\bfseries\color{darkblue}] at (-3, 2.9) {$\mathcal{H}_1$ (Coarse Level 1)};
         
-        % Arrows Down (Coarsening)
-        \draw[->, line width=1.5pt, color=darkblue] (h0) -- node[left, font=\footnotesize] {Heavy-Edge Matching} (h1);
-        \draw[->, line width=1.5pt, color=darkblue] (h1) -- node[left, font=\footnotesize] {Community Clustering} (h2);
-        \draw[->, line width=1.5pt, color=darkblue] (h2) -| node[above, font=\footnotesize] {Contraction} (hk);
+        \draw[rounded corners=2mm, fill=blue!20, draw=darkblue, line width=1pt] (-4, 1.0) rectangle (-2, 1.8);
+        \node[font=\footnotesize\bfseries\color{darkblue}] at (-3, 1.4) {$\mathcal{H}_2$ (Coarse Level 2)};
         
-        % Arrows Up (Refinement)
-        \draw[->, line width=1.5pt, color=compilerteal] (hk) |- node[below right, font=\footnotesize] {Project Partition} (r2);
-        \draw[->, line width=1.5pt, color=compilerteal] (r2) -- node[right, font=\footnotesize] {Boundary Gain Swap} (r1);
-        \draw[->, line width=1.5pt, color=compilerteal] (r1) -- node[right, font=\footnotesize] {Localized 2-Way FM} (r0);
+        % Initial Partitioning (Bottom)
+        \draw[rounded corners=2mm, fill=orange!25, draw=orange!80!black, line width=1.2pt] (-1.5, -0.8) rectangle (1.5, 0.0);
+        \node[font=\small\bfseries\color{orange!80!black}] at (0, -0.4) {Initial Partitioning ($\mathcal{H}_k$)};
+        
+        % Uncoarsening & Refinement (Right side ascending)
+        \draw[rounded corners=2mm, fill=compilerteal!15, draw=compilerteal, line width=1pt] (2, 1.0) rectangle (4, 1.8);
+        \node[font=\footnotesize\bfseries\color{compilerteal}] at (3, 1.4) {Refined $\mathcal{H}_2$};
+        
+        \draw[rounded corners=2mm, fill=compilerteal!20, draw=compilerteal, line width=1pt] (1.5, 2.5) rectangle (4.5, 3.3);
+        \node[font=\footnotesize\bfseries\color{compilerteal}] at (3, 2.9) {Refined $\mathcal{H}_1$};
+        
+        \draw[rounded corners=2mm, fill=compilerteal!25, draw=compilerteal, line width=1.2pt] (1, 4) rectangle (5, 4.8);
+        \node[font=\footnotesize\bfseries\color{compilerteal}] at (3, 4.4) {Optimized Partition $\pi^*$};
+        
+        % Arrows
+        \draw[->, line width=1.5pt, color=darkblue] (-3, 4) -- node[left, font=\tiny\bfseries] {Heavy-Edge Contraction} (-3, 3.3);
+        \draw[->, line width=1.5pt, color=darkblue] (-3, 2.5) -- node[left, font=\tiny\bfseries] {Community Rating} (-3, 1.8);
+        \draw[->, line width=1.5pt, color=darkblue] (-3, 1.0) -- (-1.5, -0.4);
+        
+        \draw[->, line width=1.5pt, color=compilerteal] (1.5, -0.4) -- (3, 1.0);
+        \draw[->, line width=1.5pt, color=compilerteal] (3, 1.8) -- node[right, font=\tiny\bfseries] {Localized FM Moves} (3, 2.5);
+        \draw[->, line width=1.5pt, color=compilerteal] (3, 3.3) -- node[right, font=\tiny\bfseries] {Boundary Refinement} (3, 4.0);
     \end{tikzpicture}
-    \caption{The Multi-Level Hypergraph Partitioning V-Cycle in DQC. The original circuit hypergraph $\mathcal{H}_0$ is successively coarsened by contracting tightly coupled qubits. At the base level $\mathcal{H}_k$, an initial partition is computed. During uncoarsening, partitions are projected back to finer levels while executing localized Fiduccia-Mattheyses (FM) refinement sweeps.}
-    \label{fig:multilevel_v_cycle}
+    \caption{The KaHyPar Multi-Level V-Cycle Architecture for distributed quantum compilation. Coarsening contracts tightly coupled qubits, initial partitioning computes seed bisections on small coarse graphs, and uncoarsening iteratively refines partition boundaries using gain-bucket Fiduccia-Mattheyses heuristics.}
+    \label{fig:kahypar_v_cycle}
 \end{figure}
 
-\subsection{Phase 1: Coarsening via Heavy-Edge Matching}
-The coarsening phase iteratively contracts clusters of vertices that share dense interactions into single pseudo-vertices, producing a hierarchy of smaller hypergraphs $\mathcal{H}_0, \mathcal{H}_1, \dots, \mathcal{H}_k$. 
-
-To select which qubits to merge, the compiler evaluates the **Hyperedge Matching Rating** $R(u, v)$ between adjacent vertices:
+\subsection{Phase 1: Heavy-Edge Rating and Contraction}
+During coarsening, pairs of vertices $(u, v)$ sharing dense quantum interactions are merged into single composite vertices. The similarity rating function $r(u, v)$ is calculated as:
 \begin{equation}
-    R(u, v) = \sum_{e \in \mathcal{E}(u) \cap \mathcal{E}(v)} \frac{w(e)}{|e| - 1},
-    \label{eq:matching_rating}
+    r(u, v) = \sum_{e \in \mathcal{E}(u) \cap \mathcal{E}(v)} \frac{w(e)}{|e| - 1},
+    \label{eq:heavy_edge_rating}
 \end{equation}
-where dividing by $(|e| - 1)$ gives higher priority to two-qubit interactions (which can be completely internalized by merging $u$ and $v$) over high-order multi-qubit hyperedges. When $u$ and $v$ are contracted into super-vertex $v_{uv}$, its weight is set to $c(v_{uv}) = c(u) + c(v)$, ensuring QPU capacity constraints are preserved up the hierarchy.
+where $\mathcal{E}(u)$ is the set of hyperedges incident on qubit $u$. Vertices with maximal rating are contracted iteratively until $|V| \le 50$.
+
+\begin{algorithmbox}{Multi-Level Hypergraph Coarsening with Heavy-Edge Rating}
+\textbf{Input:} Hypergraph $\mathcal{H}_0 = (V_0, \mathcal{E}_0)$, Contraction threshold $N_{\min}$.\\
+\textbf{Output:} Hierarchy of coarse hypergraphs $\mathcal{H}_0, \mathcal{H}_1, \dots, \mathcal{H}_K$.
+
+\begin{enumerate}[leftmargin=1.5em]
+    \item Set $k \leftarrow 0$.
+    \item \textbf{While} $|V_k| > N_{\min}$ \textbf{do}:
+    \begin{itemize}
+        \item Create randomized vertex visitation order $\sigma(V_k)$.
+        \item Initialize matched bitmask $M[v] \leftarrow \text{false}$ for all $v \in V_k$.
+        \item \textbf{For each} $u \in \sigma(V_k)$ where $M[u] = \text{false}$:
+        \begin{itemize}
+            \item Find candidate $v^* = \arg\max_{v \in \mathcal{N}(u), M[v]=\text{false}} r(u, v)$.
+            \item If $r(u, v^*) > 0$ and $w(u) + w(v^*) \le C_{\max}$:
+            \begin{itemize}
+                \item Merge $u$ and $v^*$ into composite vertex $w = (u, v^*)$.
+                \item Set $w(w) = w(u) + w(v^*)$ and $M[u] \leftarrow \text{true}, M[v^*] \leftarrow \text{true}$.
+            \end{itemize}
+        \end{itemize}
+        \item Build coarse hyperedges $\mathcal{E}_{k+1}$ by re-mapping pins and removing single-pin loops.
+        \item Set $\mathcal{H}_{k+1} \leftarrow (V_{k+1}, \mathcal{E}_{k+1})$ and $k \leftarrow k + 1$.
+    \end{itemize}
+    \item \textbf{Return} $\{\mathcal{H}_0, \mathcal{H}_1, \dots, \mathcal{H}_K\}$.
+\end{enumerate}
+\end{algorithmbox}
 
 \subsection{Phase 2: Initial Partitioning}
-Once the hypergraph has been reduced to a small base graph ($|V_k| \le 50$), the compiler applies an aggressive search algorithm to find an initial partition $\pi_k$. Because $|V_k|$ is small, this can be executed via:
-\begin{itemize}
-    \item Multi-start recursive bisection with random seed vectors,
-    \item Spectral bisection based on the Fiedler vector of the normalized hypergraph Laplacian, or
-    \item Exact branch-and-bound optimization.
-\end{itemize}
+On the coarse hypergraph $\mathcal{H}_K$, a portfolio of fast algorithms (recursive bisection, randomized greedy graph growing, and spectral embedding) generates multiple candidate partitions. The candidate with minimum cut cost is selected as the seed.
 
-\subsection{Phase 3: Uncoarsening and Boundary Refinement}
-During uncoarsening, the partition $\pi_{i+1}$ on the coarser hypergraph $\mathcal{H}_{i+1}$ is projected onto $\mathcal{H}_i$. Because vertices in $\mathcal{H}_i$ have greater degrees of freedom than their contracted counterparts, the cut cost can be strictly decreased using local refinement.
+\subsection{Phase 3: Uncoarsening and Localized FM Refinement}
+During uncoarsening, contracted vertices are unpacked back to their original constituents. At each level, a localized \keyterm{Fiduccia-Mattheyses (FM)} refinement pass attempts to move boundary qubits between QPUs to decrease communication cost.
 
-The standard refinement heuristic is the **Fiduccia-Mattheyses (FM)** algorithm adapted for hypergraphs:
-\begin{enumerate}
-    \item For every vertex $v$ located on the partition boundary, compute the movement gain $g(v)$, defined as the reduction in cut cost achieved by moving $v$ from its current QPU $\pi(v)$ to a neighboring QPU $P_{\text{target}}$:
-    \begin{equation}
-        g(v) = \sum_{e \in \mathcal{E}(v)} \Delta \Phi(e, v \to P_{\text{target}}).
-        \label{eq:fm_gain}
-    \end{equation}
-    \item Store all eligible boundary vertices in a bucket-sorted priority queue indexed by gain $g(v)$.
-    \item Select the vertex $v^*$ with maximum gain $g(v^*)$ that does not violate QPU capacity $C_m$. Move $v^*$, lock it to prevent thrashing, and update the gains of all neighboring vertices sharing hyperedges with $v^*$.
-    \item Repeat until all boundary vertices are locked, then roll back to the step in the move history that yielded the global minimum cut cost.
+The move gain for shifting qubit $v$ from QPU $P_{\text{from}}$ to $P_{\text{to}}$ is:
+\begin{equation}
+    G(v, P_{\text{to}}) = \sum_{e \in \mathcal{E}(v)} w(e) \cdot \Delta \Phi(e, P_{\text{from}} \to P_{\text{to}}),
+    \label{eq:fm_gain_formula}
+\end{equation}
+where:
+\begin{equation}
+    \Delta \Phi(e) = \begin{cases}
+        -1 & \text{if } v \text{ was the sole vertex of } e \text{ in } P_{\text{from}}, \\
+        +1 & \text{if } e \text{ had zero vertices in } P_{\text{to}} \text{ prior to move}, \\
+        0 & \text{otherwise.}
+    \end{cases}
+\end{equation}
+
+Boundary vertices are maintained in balanced binary heap priority queues (gain buckets). A rollback mechanism tracks cumulative move sequences, accepting negative intermediate gains to escape local minima.
+
+\begin{algorithmbox}{Fiduccia-Mattheyses (FM) Boundary Refinement with Rollback}
+\textbf{Input:} Hypergraph $\mathcal{H} = (V, \mathcal{E})$, Initial partition $\pi$, Max moves $M_{\max}$.\\
+\textbf{Output:} Refined partition $\pi^*$ with minimal communication cost $\Phi(\pi^*)$.
+
+\begin{enumerate}[leftmargin=1.5em]
+    \item Initialize priority queues $PQ[P_{\text{to}}]$ with initial gains $G(v, P_{\text{to}})$ for all boundary qubits $v$.
+    \item Initialize move history $\mathcal{H}_{\text{moves}} \leftarrow \emptyset$, cumulative gain $S \leftarrow 0$, best gain $S_{\text{best}} \leftarrow 0$, best index $k^* \leftarrow 0$.
+    \item \textbf{For} step $k = 1$ to $M_{\max}$ \textbf{do}:
+    \begin{itemize}
+        \item Select unlocked vertex $v^*$ with maximal gain $g^* = \max_{P} G(v^*, P)$ satisfying capacity bounds.
+        \item If no valid move exists, \textbf{break}.
+        \item Execute tentative move: $\pi(v^*) \leftarrow P_{\text{to}}$, lock $v^*$, update $S \leftarrow S + g^*$.
+        \item Record move $(v^*, P_{\text{from}}, P_{\text{to}}, g^*)$ in $\mathcal{H}_{\text{moves}}$.
+        \item If $S > S_{\text{best}}$, update $S_{\text{best}} \leftarrow S$ and $k^* \leftarrow k$.
+        \item \textbf{Update Gains:} For each neighbor $u \in \mathcal{N}(v^*)$, update $G(u, P)$ in priority queues.
+    \end{itemize}
+    \item \textbf{Rollback:} Undo all moves from step $M_{\max}$ down to $k^* + 1$.
+    \item \textbf{Return} Refined partition $\pi^*$.
 \end{enumerate}
+\end{algorithmbox}
+
+\subsection{C++ Implementation of the FM Gain Bucket Array Data Structure}
+\label{sec:cpp_bucket_array}
+
+In production compilers, searching for the maximum-gain unlocked boundary qubit at each FM step cannot afford an $O(|V|)$ linear scan. We implement a constant-time $O(1)$ \keyterm{Gain Bucket Array} using doubly-linked list nodes indexed by integer move gain values $g \in [-G_{\max}, +G_{\max}]$, as shown in Listing~\ref{lst:bucket_array_cpp}.
+
+\begin{lstlisting}[language=C++, caption={High-Performance FM Gain Bucket Array in C++}, label={lst:bucket_array_cpp}]
+#include <vector>
+#include <cstdint>
+#include <cassert>
+#include <limits>
+
+struct FMNode {
+    int32_t vertex_id;
+    int32_t gain;
+    int32_t prev;
+    int32_t next;
+    bool locked;
+};
+
+class FMBucketArray {
+private:
+    int32_t max_degree_;
+    int32_t max_gain_;
+    int32_t current_max_gain_;
+    std::vector<int32_t> bucket_heads_; // Indexed by gain + max_gain_
+    std::vector<FMNode> nodes_;
+
+public:
+    explicit FMBucketArray(size_t num_vertices, int32_t max_deg)
+        : max_degree_(max_deg),
+          max_gain_(max_deg),
+          current_max_gain_(-max_deg - 1),
+          bucket_heads_(2 * max_deg + 1, -1),
+          nodes_(num_vertices) {
+        for (size_t i = 0; i < num_vertices; ++i) {
+            nodes_[i] = {static_cast<int32_t>(i), 0, -1, -1, false};
+        }
+    }
+
+    void Insert(int32_t v, int32_t gain) {
+        assert(!nodes_[v].locked);
+        assert(gain >= -max_gain_ && gain <= max_gain_);
+        nodes_[v].gain = gain;
+        int32_t bucket_idx = gain + max_gain_;
+        
+        int32_t old_head = bucket_heads_[bucket_idx];
+        nodes_[v].next = old_head;
+        nodes_[v].prev = -1;
+        if (old_head != -1) {
+            nodes_[old_head].prev = v;
+        }
+        bucket_heads_[bucket_idx] = v;
+        if (gain > current_max_gain_) {
+            current_max_gain_ = gain;
+        }
+    }
+
+    void Remove(int32_t v) {
+        int32_t gain = nodes_[v].gain;
+        int32_t bucket_idx = gain + max_gain_;
+        int32_t prev_v = nodes_[v].prev;
+        int32_t next_v = nodes_[v].next;
+
+        if (prev_v != -1) nodes_[prev_v].next = next_v;
+        else bucket_heads_[bucket_idx] = next_v;
+
+        if (next_v != -1) nodes_[next_v].prev = prev_v;
+        nodes_[v].prev = -1;
+        nodes_[v].next = -1;
+
+        if (bucket_heads_[bucket_idx] == -1 && gain == current_max_gain_) {
+            while (current_max_gain_ >= -max_gain_ && 
+                   bucket_heads_[current_max_gain_ + max_gain_] == -1) {
+                --current_max_gain_;
+            }
+        }
+    }
+
+    void UpdateGain(int32_t v, int32_t new_gain) {
+        if (nodes_[v].locked) return;
+        Remove(v);
+        Insert(v, new_gain);
+    }
+
+    int32_t ExtractMax() {
+        if (current_max_gain_ < -max_gain_) return -1; // Empty
+        int32_t best_v = bucket_heads_[current_max_gain_ + max_gain_];
+        assert(best_v != -1);
+        Remove(best_v);
+        nodes_[best_v].locked = true;
+        return best_v;
+    }
+};
+\end{lstlisting}
+
+\subsection{Spectral Hypergraph Partitioning and Cheeger Gap Bounds}
+\label{sec:spectral_hypergraph_cheeger}
+
+For large quantum circuit hypergraphs where initial greedy seeding fails, spectral partitioning provides mathematically provable global approximation guarantees.
+
+Let $\mathcal{H} = (V, \mathcal{E}, w)$ be a hypergraph with incidence matrix $H \in \{0, 1\}^{|V| \times |\mathcal{E}|}$ where $H(v, e) = 1$ if $v \in e$. Let $D_v \in \mathbb{R}^{|V| \times |V|}$ be the diagonal vertex degree matrix with $D_v(u, u) = d(u) = \sum_{e \in \mathcal{E}(u)} w(e)$, $D_e \in \mathbb{R}^{|\mathcal{E}| \times |\mathcal{E}|}$ be the diagonal hyperedge degree matrix with $D_e(e, e) = \delta(e) = |e|$, and $W \in \mathbb{R}^{|\mathcal{E}| \times |\mathcal{E}|}$ be the diagonal edge weight matrix.
+
+The normalized hypergraph Laplacian operator $L \in \mathbb{R}^{|V| \times |V|}$ is defined as:
+\begin{equation}
+    L = \mathbb{I} - D_v^{-1/2} H W D_e^{-1} H^T D_v^{-1/2}.
+    \label{eq:hypergraph_normalized_laplacian}
+\end{equation}
+
+\begin{theorembox}{Cheeger Inequality and Spectral Gap for Quantum Hypergraphs}
+Let $h(\mathcal{H})$ be the Cheeger conductance of hypergraph $\mathcal{H}$:
+\begin{equation}
+    h(\mathcal{H}) = \min_{S \subset V, 0 < \text{vol}(S) \le \frac{1}{2}\text{vol}(V)} \frac{\text{cut}(S, V \setminus S)}{\text{vol}(S)},
+\end{equation}
+where $\text{vol}(S) = \sum_{v \in S} d(v)$ and $\text{cut}(S, V \setminus S) = \sum_{e \cap S \neq \emptyset, e \cap (V \setminus S) \neq \emptyset} w(e)$. Let $\lambda_2$ be the second smallest eigenvalue (algebraic connectivity) of the normalized Laplacian $L$. Then:
+\begin{equation}
+    \frac{\lambda_2}{2} \le h(\mathcal{H}) \le \sqrt{2 \lambda_2}.
+    \label{eq:hypergraph_cheeger_bound}
+\end{equation}
+\end{theorembox}
+
+\begin{proof}
+Let $\bm{x} \in \mathbb{R}^{|V|}$ be the Fiedler eigenvector associated with eigenvalue $\lambda_2$, satisfying $L \bm{x} = \lambda_2 \bm{x}$ with $\bm{x} \perp D_v^{1/2} \bm{1}$. The Rayleigh quotient evaluates to:
+\begin{equation}
+    \lambda_2 = \min_{\bm{x} \perp D_v^{1/2} \bm{1}, \bm{x} \neq \bm{0}} \frac{\bm{x}^T L \bm{x}}{\bm{x}^T \bm{x}} = \frac{\frac{1}{2}\sum_{e \in \mathcal{E}} \frac{w(e)}{\delta(e)} \sum_{u, v \in e} \left( \frac{x(u)}{\sqrt{d(u)}} - \frac{x(v)}{\sqrt{d(v)}} \right)^2}{\sum_{u \in V} x(u)^2}.
+\end{equation}
+Ordering vertices by their spectral coordinate $y(u) = x(u) / \sqrt{d(u)}$ such that $y(v_1) \le y(v_2) \le \dots \le y(v_n)$ and sweeping across all $n-1$ candidate cuts $S_k = \{v_1, \dots, v_k\}$, the sweep-cut theorem guarantees that $\min_k \frac{\text{cut}(S_k, V \setminus S_k)}{\text{vol}(S_k)} \le \sqrt{2 \lambda_2}$.
+\end{proof}
 
 % ==============================================================================
-\section{Empirical Partitioning Metrics on Real-World Workloads}
-\label{sec:empirical_partitioning}
+\section{Dynamic Partitioning and Temporal Slicing}
+\label{sec:dynamic_partitioning}
 % ==============================================================================
 
-To demonstrate the efficacy of hypergraph partitioning versus naive random and linear block placement, Table~\ref{tab:partitioning_benchmarks} compares communication costs across three representative quantum benchmark circuits distributed across $M=4$ QPUs with $C_m = 8$ qubits each (total 32-qubit register).
+In deep quantum algorithms such as Shor's algorithm or Quantum Phase Estimation, the interaction topology of qubits changes dramatically across algorithmic epochs. A static partition $\pi$ that is optimal during the first $20\%$ of the circuit may become disastrously inefficient during the final $80\%$.
+
+\subsection{Temporal Slicing Model}
+The compiler divides circuit $\mathcal{C}$ into $T$ temporal epochs $\mathcal{T}_1, \mathcal{T}_2, \dots, \mathcal{T}_T$. In each epoch $t$, a dedicated partition $\pi_t$ is computed. When transitioning from epoch $t$ to epoch $t+1$, qubits whose partition assignments change ($\pi_t(q) \neq \pi_{t+1}(q)$) are migrated across QPUs using full quantum state teleportation.
+
+\begin{theorembox}{Epoch Migration Trade-Off Condition}
+Migrating a set of qubits $Q_{\text{mig}} \subset Q$ across QPUs at epoch boundary $t \to t+1$ is advantageous if and only if:
+\begin{equation}
+    \sum_{e \in \mathcal{E}(\mathcal{T}_{t+1})} w(e) \cdot \Delta (\lambda(e) - 1) > |Q_{\text{mig}}| \cdot \text{Cost}(\text{TeleportQubit}),
+    \label{eq:epoch_migration_tradeoff}
+\end{equation}
+where $\text{Cost}(\text{TeleportQubit}) = 1\text{ EPR pair} + 2\text{ classical bits} + \text{BSM latency}$.
+\end{theorembox}
+
+% ==============================================================================
+% WORKED EXAMPLE
+% ==============================================================================
+
+\section{Worked 32-Qubit Numerical Partitioning Trace}
+\label{sec:worked_partitioning_trace}
+
+Consider a 32-qubit Quantum Volume (QV-32) benchmark circuit containing 160 entangling SU(4) two-qubit gates, to be mapped onto $M = 4$ QPUs ($C_i = 8$ qubits each).
 
 \begin{table}[htbp]
-    \centering
-    \small
-    \caption{Communication Cut Cost Comparison Across Partitioning Strategies ($M=4$ QPUs)}
-    \label{tab:partitioning_benchmarks}
-    \begin{tabularx}{\textwidth}{lcccc}
-        \toprule
-        \textbf{Benchmark Algorithm} & \textbf{Total 2Q Gates} & \textbf{Naive Linear Cut} & \textbf{Graph METIS Cut} & \textbf{DQC Hypergraph Cut} \\
-        \midrule
-        Draper QFT Adder (16-bit) & 240 & 148 & 62 & \textbf{28} ($-81.0\%$) \\
-        Grover Search (16 qubits) & 380 & 210 & 94 & \textbf{44} ($-79.0\%$) \\
-        VQE Hardware Efficient (32Q) & 496 & 284 & 118 & \textbf{52} ($-81.7\%$) \\
-        Quantum Random Walk (24Q) & 312 & 186 & 76 & \textbf{34} ($-81.7\%$) \\
-        \bottomrule
-    \end{tabularx}
+\centering
+\caption{Evolution of Communication Cost Across Partitioning Heuristics (32 Qubits, 4 QPUs, 160 Entangling Gates)}
+\label{tab:partitioning_trace_comparison}
+\begin{tabular}{l c c c l}
+\toprule
+\textbf{Partitioning Method} & \textbf{Cut Gate Count} & \textbf{$(\lambda - 1)$ Cost} & \textbf{Max QPU Load} & \textbf{Estimated Fidelity} \\
+\midrule
+Random Assignment & 121 & 158 & 8 & $F_{\text{est}} \approx 4.2 \times 10^{-4}$ (Noise floor) \\
+METIS Graph Partitioning & 74 & 92 & 8 & $F_{\text{est}} \approx 3.8 \times 10^{-2}$ \\
+KaHyPar (Coarsening Only) & 49 & 56 & 8 & $F_{\text{est}} \approx 28.4\%$ \\
+KaHyPar (FM Refinement) & \textbf{33} & \textbf{33} & 8 & \textbf{$F_{\text{est}} \approx 64.7\%$} ($154\times$ Gain) \\
+MILP (Exact Solver, 4 hours) & \textbf{32} & \textbf{32} & 8 & $F_{\text{est}} \approx 66.1\%$ \\
+\bottomrule
+\end{tabular}
 \end{table}
 
-As evidenced by empirical data, hypergraph partitioning yields an average **$80.8\%$ reduction** in non-local entangling gates compared to naive block layout, and a **$55.2\%$ reduction** compared to standard graph-based METIS partitioning. This directly translates into an $80\%$ reduction in physical EPR pair consumption and a commensurate preservation of quantum state fidelity.
+\begin{table}[htbp]
+\centering
+\caption{Step-by-Step Refinement Trace of FM Move Sequence on 32-Qubit Hypergraph}
+\label{tab:fm_step_trace}
+\begin{tabular}{c c c c c c c}
+\toprule
+\textbf{Step $k$} & \textbf{Moved Qubit $v^*$} & \textbf{From $P_{\text{from}}$} & \textbf{To $P_{\text{to}}$} & \textbf{Step Gain $g^*$} & \textbf{Cumulative $S_k$} & \textbf{Best Marker $k^*$} \\
+\midrule
+1 & $q_4$ & QPU 1 & QPU 0 & $+3$ & $+3$ & $\star$ (Best: 3) \\
+2 & $q_{12}$ & QPU 2 & QPU 0 & $+2$ & $+5$ & $\star$ (Best: 5) \\
+3 & $q_7$ & QPU 3 & QPU 1 & $+2$ & $+7$ & $\star$ (Best: 7) \\
+4 & $q_{19}$ & QPU 0 & QPU 2 & $-1$ & $+6$ & \\
+5 & $q_{22}$ & QPU 0 & QPU 3 & $+3$ & $+9$ & $\star$ (Best: 9) \\
+6 & $q_9$ & QPU 2 & QPU 1 & $-2$ & $+7$ & \\
+7 & $q_{15}$ & QPU 3 & QPU 2 & $-1$ & $+6$ & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{examplebox}{Step-by-Step Gain Calculation on a Multi-Qubit Hyperedge}
+Consider a hyperedge $e = \{q_0, q_1, q_4, q_7\}$ with $w(e) = 1$. Under candidate partition $\pi$:
+\begin{itemize}
+    \item QPU 0 holds: $\{q_0, q_1\}$.
+    \item QPU 1 holds: $\{q_4\}$.
+    \item QPU 2 holds: $\{q_7\}$.
+    \item Current span: $\lambda(e) = 3 \implies (\lambda - 1) = 2\text{ non-local channels}$.
+\end{itemize}
+
+Let us evaluate the move of $q_4$ from QPU 1 to QPU 0:
+\begin{enumerate}
+    \item In $P_{\text{from}} = \text{QPU 1}$, $q_4$ is the \textbf{sole} vertex of $e$. Thus, after the move, QPU 1 has 0 vertices of $e$ ($\Delta = -1$).
+    \item In $P_{\text{to}} = \text{QPU 0}$, QPU 0 \textbf{already} holds $\{q_0, q_1\}$. Thus, no new partition is added ($\Delta = 0$).
+    \item The net gain is:
+    \begin{equation}
+        G(q_4, \text{QPU 0}) = w(e) \cdot (-(-1) + 0) = +1\text{ (Communication cost decreases by 1)}.
+    \end{equation}
+    \item After the move, $\lambda'(e) = |\{\text{QPU 0}, \text{QPU 2}\}| = 2 \implies (\lambda' - 1) = 1$. The non-local EPR requirement is cut in half.
+\end{enumerate}
+\end{examplebox}
+
+% ==============================================================================
+% CHAPTER SUMMARY
+% ==============================================================================
+
+\begin{summarybox}{Key Invariants of Chapter 5}
+\begin{enumerate}
+    \item \textbf{Hypergraph Necessity:} Standard graph abstractions distort communication costs by up to $\lfloor k/2 \rfloor \lceil k/2 \rceil$ on $k$-qubit gates; compilers must represent quantum interactions as hypergraphs.
+    \item \textbf{Objective Metric:} The exact communication metric for multi-QPU compilation is the $(\lambda - 1)$ metric.
+    \item \textbf{NP-Completeness:} Optimal multi-QPU partitioning is NP-complete, requiring multi-level V-cycles (KaHyPar) for production scalability.
+    \item \textbf{Multi-Constraint Awareness:} Real-world compilers must balance qubit capacity, link bandwidth limits, and coherence life budgets simultaneously.
+    \item \textbf{Dynamic Partitioning:} Deep circuits require temporal epoch slicing and state teleportation migration when communication patterns evolve over time.
+\end{enumerate}
+\end{summarybox}
+
+% ==============================================================================
+% EXERCISES
+% ==============================================================================
+
+\section*{Exercises}
+\addcontentsline{toc}{section}{Exercises}
+
+\begin{enumerate}[label=\textbf{5.\arabic*.}]
+    \item \textbf{Clique Expansion Error.} A 6-qubit quantum gate acts on qubits $\{q_0, q_1, q_2, q_3, q_4, q_5\}$. Compute the true hypergraph $(\lambda - 1)$ cost for a bisection partitioning $\{q_0, q_1, q_2\}$ on QPU 0 and $\{q_3, q_4, q_5\}$ on QPU 1. Compare this against the graph clique expansion edge cut.
+    
+    \item \textbf{MILP Formulation.} Write down the explicit MILP objective and constraints for partitioning an 8-qubit circuit with 6 CNOT gates across 2 QPUs of capacity $C = 4$.
+    
+    \item \textbf{FM Gain Calculation.} A hyperedge $e = \{q_1, q_2, q_3, q_4\}$ spans QPU 0 ($q_1$) and QPU 1 ($q_2, q_3, q_4$). Calculate the move gain $G(q_1, \text{QPU 1})$ and $G(q_2, \text{QPU 0})$ using Equation~\ref{eq:fm_gain_formula}.
+    
+    \item \textbf{Heavy-Edge Rating Convergence.} Prove that the heavy-edge similarity rating $r(u, v) = \sum_{e \in \mathcal{E}(u) \cap \mathcal{E}(v)} \frac{w(e)}{|e| - 1}$ is invariant under uniform scaling of hyperedge weights.
+    
+    \item \textbf{Bandwidth-Constrained Partitioning.} Suppose the optical link between QPU 0 and QPU 1 can generate at most 1,000 ebits/sec. A circuit has execution duration $10\text{ ms}$. If KaHyPar yields a partition with 18 cut CNOTs, determine if this schedule is physically executable without buffer stalls.
+    
+    \item \textbf{Cheeger Hypergraph Conductance.} Given a 4-qubit hypergraph with hyperedges $e_1 = \{q_0, q_1, q_2\}$ and $e_2 = \{q_1, q_2, q_3\}$, compute the hypergraph Laplacian matrix $\Delta_{\mathcal{H}}$ and find its second eigenvalue $\lambda_2$.
+    
+    \item \textbf{Dynamic Epoch Migration.} A circuit has two epochs $\mathcal{T}_1$ and $\mathcal{T}_2$. In $\mathcal{T}_1$, optimal partition $\pi_1$ requires 4 ebits. If $\pi_1$ is maintained in $\mathcal{T}_2$, $\mathcal{T}_2$ requires 14 ebits. If 2 qubits are migrated to new QPUs at the start of $\mathcal{T}_2$, the new partition $\pi_2$ requires 2 ebits in $\mathcal{T}_2$. Calculate the net ebit savings from performing dynamic epoch migration.
+    
+    \item \textbf{KaHyPar Rollback Invariant.} In Table~\ref{tab:fm_step_trace}, step 4 produced a negative gain $g^* = -1$, but step 5 reached the global best cumulative gain $S_5 = +9$. Explain why greedy algorithms without rollback fail to find this optimum.
+\end{enumerate}

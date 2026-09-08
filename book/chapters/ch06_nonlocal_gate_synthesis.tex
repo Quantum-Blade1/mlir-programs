@@ -2,281 +2,563 @@
 \label{ch:nonlocal_gate_synthesis}
 
 \begin{quote}
-\textit{``When the control qubit sits in dilution refrigerator Alpha and the target qubit in dilution refrigerator Beta, direct unitary evolution is physically impossible. The compiler must synthesize non-local interaction through quantum teleportation and phase kickback.''}
+\textit{``When the control qubit sits in dilution refrigerator Alpha and the target qubit in dilution refrigerator Beta, direct unitary evolution is physically impossible. The compiler must synthesize non-local interaction through quantum teleportation, phase kickback, and Lie-algebraic Cartan decompositions.''}
 \end{quote}
 
-Once the partitioning engine has divided the quantum circuit across multiple physical QPUs, all gates that cross partition boundaries must be transformed into physically realizable operations. Because direct transverse coupling cannot span macroscopic inter-QPU distances, non-local quantum interactions are synthesized through distributed sub-circuits that consume pre-shared entanglement (EPR pairs), local entangling gates, and classical communication.
+% ======================================================================
+% OPENING NARRATIVE
+% ======================================================================
+\section*{Chapter Overview: Building Quantum Logic Across Physical Abysses}
 
-This chapter presents the mathematical theory, algebraic derivations, and circuit architectures for non-local gate synthesis. We analyze the canonical two-qubit non-local gates (CNOT and Controlled-Phase), detail the Cat-entangler/disentangler mechanism, provide complete multi-QPU decompositions for three-qubit Toffoli (CCX) gates across arbitrary partitions, and formalize the general $n$-qubit Multi-Controlled-X (MCX) distributed synthesis algorithms implemented in the DQC compiler.
+In a monolithic quantum processor, executing a two-qubit gate like a CNOT or CZ is achieved by turning on a physical interaction Hamiltonian $\hat{\mathcal{H}}_{\text{int}}$ between adjacent qubits for a precise duration $\tau$. In superconducting transmons, this involves pulsing a microwave drive or tuning flux biases to bring cross-resonance or capacitive couplers into resonance. In trapped ions, laser beams excite collective vibrational phonon modes across the ion crystal.
+
+In a distributed quantum computer, the control qubit might sit in a cryostat in Rack 1, while the target qubit sits in a cryostat in Rack 4, separated by $5\text{ meters}$ of optical fiber. There is no physical Hamiltonian coupling these two matter qubits directly. 
+
+How can a compiler execute a two-qubit or multi-qubit gate when no physical interaction exists between the operands?
+
+The compiler must \textbf{synthesize non-local gates}. Using pre-shared Einstein-Podolsky-Rosen (EPR) pairs, local on-chip single- and two-qubit gates, mid-circuit measurements, and real-time classical message passing, the compiler constructs distributed quantum circuits that are mathematically identical to the target unitary operations.
+
+In this chapter, we explore the complete mathematical theory and algorithmic implementation of non-local gate synthesis:
+\begin{itemize}
+    \item Canonical non-local two-qubit gates (Remote CNOT, Remote CZ, Remote SWAP, and Remote $CP(\theta)$);
+    \item Makhlin's local invariants and the Cartan KAK decomposition for arbitrary $U \in \text{SU}(4)$;
+    \item The geometry of the \keyterm{Weyl Chamber} and the 3-ebit universality theorem;
+    \item The \keyterm{Cat-Entangler / Cat-Disentangler} framework for parallel 1-to-$k$ control broadcasting;
+    \item Distributed three-qubit Toffoli (CCX) and general $n$-qubit Multi-Controlled-X (MCX) synthesis algorithms.
+\end{itemize}
 
 % ==============================================================================
 \section{Canonical Non-Local Two-Qubit Gates}
 \label{sec:canonical_2q_synthesis}
 % ==============================================================================
 
-The foundational building block of distributed quantum logic is the non-local Controlled-NOT (CNOT) operation between a control qubit $\ket{\psi_c}$ on QPU $A$ and a target qubit $\ket{\psi_t}$ on QPU $B$.
-
-\subsection{Algebraic Derivation of the Eisert Tele-Gate Protocol}
-Let the initial quantum state before gate execution be:
-\begin{equation}
-    \ket{\Psi_0} = \ket{\psi_c}_A \otimes \ket{\psi_t}_B = (\alpha \ket{0}_A + \beta \ket{1}_A) \otimes (\gamma \ket{0}_B + \delta \ket{1}_B).
-    \label{eq:initial_bipartite_state}
-\end{equation}
-
-To execute a remote CNOT without moving the primary qubits, QPUs $A$ and $B$ share an ancillary Bell pair:
-\begin{equation}
-    \ket{\Phi^+}_{e_A e_B} = \frac{1}{\sqrt{2}} \left( \ket{0}_{e_A} \ket{0}_{e_B} + \ket{1}_{e_A} \ket{1}_{e_B} \right).
-\end{equation}
-The four-qubit system state is $\ket{\Psi_1} = \ket{\Psi_0} \otimes \ket{\Phi^+}_{e_A e_B}$.
+\subsection{The Remote CNOT Gate (EJPP Protocol)}
+The foundational building block of distributed quantum logic is the non-local Controlled-NOT (CNOT) operation between control qubit $\ket{\psi_c}$ on QPU $A$ and target qubit $\ket{\psi_t}$ on QPU $B$, formulated by Eisert, Jacobs, Papadopoulos, and Plenio (EJPP).
 
 \begin{figure}[htbp]
     \centering
     \begin{tikzpicture}[scale=0.92, >=stealth]
         % QPU Alpha Box
-        \draw[rounded corners=3mm, fill=blue!5, draw=darkblue, line width=1pt] (-5.5, -2.8) rectangle (-0.5, 2.2);
-        \node[font=\bfseries\color{darkblue}] at (-3, 1.8) {QPU Alpha (Sender)};
+        \draw[rounded corners=3mm, fill=blue!5, draw=darkblue, line width=1pt] (-5.8, -2.8) rectangle (-0.5, 2.2);
+        \node[font=\bfseries\color{darkblue}] at (-3.15, 1.8) {QPU Alpha (Sender)};
         
         % QPU Beta Box
-        \draw[rounded corners=3mm, fill=blue!5, draw=darkblue, line width=1pt] (0.5, -2.8) rectangle (5.5, 2.2);
-        \node[font=\bfseries\color{darkblue}] at (3, 1.8) {QPU Beta (Receiver)};
+        \draw[rounded corners=3mm, fill=blue!5, draw=darkblue, line width=1pt] (0.5, -2.8) rectangle (5.8, 2.2);
+        \node[font=\bfseries\color{darkblue}] at (3.15, 1.8) {QPU Beta (Receiver)};
         
         % Horizontal Lines
-        \draw[line width=1pt] (-5, 1.0) node[left] {$q_c$} -- (-1, 1.0) -- (0, 1.0) -- (5, 1.0) node[right] {$q_c$};
-        \draw[line width=1pt] (-5, -0.2) node[left] {$e_A$} -- (-1, -0.2);
-        \draw[line width=1pt] (1, -0.2) -- (5, -0.2) node[right] {$e_B$};
-        \draw[line width=1pt] (1, -1.8) node[left] {$q_t$} -- (5, -1.8) node[right] {$q_t$};
+        \draw[line width=1.2pt] (-5.2, 1.0) node[left, font=\small\bfseries] {$q_c$} -- (-1, 1.0) -- (0, 1.0) -- (5.2, 1.0) node[right, font=\small\bfseries] {$q_c$};
+        \draw[line width=1.2pt] (-5.2, -0.2) node[left, font=\small\bfseries] {$e_A$} -- (-1, -0.2);
+        \draw[line width=1.2pt] (1, -0.2) -- (5.2, -0.2) node[right, font=\small\bfseries] {$e_B$};
+        \draw[line width=1.2pt] (1, -1.8) node[left, font=\small\bfseries] {$q_t$} -- (5.2, -1.8) node[right, font=\small\bfseries] {$q_t$};
         
         % Shared EPR link
         \draw[<->, line width=1.5pt, color=quantumviolet, dashed] (-1, -0.2) to [bend left=25] 
-            node[above, font=\scriptsize\bfseries] {Shared $\ket{\Phi^+}$} (1, -0.2);
+            node[above, font=\scriptsize\bfseries] {Pre-Shared $\ket{\Phi^+}$} (1, -0.2);
             
         % Step 1: Local CNOT on Alpha (qc -> eA)
-        \node[draw, circle, fill=black, inner sep=2pt] (c1) at (-4, 1.0) {};
-        \node[draw, circle, fill=white, inner sep=3.5pt] (t1) at (-4, -0.2) {};
-        \draw[line width=1pt] (t1.north) -- (t1.south);
-        \draw[line width=1pt] (t1.east) -- (t1.west);
-        \draw[line width=1pt] (c1) -- (t1);
-        \node[font=\tiny, left] at (-4.1, 0.4) {1. CX};
+        \node[draw, circle, fill=darkblue, inner sep=2.5pt] (c1) at (-4, 1.0) {};
+        \node[draw, circle, fill=white, inner sep=4pt, line width=1pt] (t1) at (-4, -0.2) {};
+        \draw[line width=1.2pt] (t1.north) -- (t1.south);
+        \draw[line width=1.2pt] (t1.east) -- (t1.west);
+        \draw[line width=1.2pt] (c1) -- (t1);
+        \node[font=\tiny\bfseries\color{darkblue}, left=2pt] at (-4.1, 0.4) {1. Local CX};
         
         % Step 2: Measure eA on Alpha in Z basis
-        \draw[fill=white, draw=black, line width=0.8pt] (-2.5, -0.5) rectangle (-1.7, 0.1);
-        \node[font=\tiny] at (-2.1, -0.2) {$\mathcal{M}_Z$};
-        \node[font=\tiny, above] at (-2.1, 0.1) {$m_1$};
+        \draw[fill=white, draw=darkblue, line width=1pt] (-2.5, -0.5) rectangle (-1.7, 0.1);
+        \node[font=\footnotesize\bfseries] at (-2.1, -0.2) {$\mathcal{M}_Z$};
+        \node[font=\tiny\bfseries, above] at (-2.1, 0.1) {$m_1$};
         
         % Step 3: Local CNOT on Beta (eB -> qt)
-        \node[draw, circle, fill=black, inner sep=2pt] (c2) at (2, -0.2) {};
-        \node[draw, circle, fill=white, inner sep=3.5pt] (t2) at (2, -1.8) {};
-        \draw[line width=1pt] (t2.north) -- (t2.south);
-        \draw[line width=1pt] (t2.east) -- (t2.west);
-        \draw[line width=1pt] (c2) -- (t2);
-        \node[font=\tiny, right] at (2.1, -1.0) {3. CX};
+        \node[draw, circle, fill=darkblue, inner sep=2.5pt] (c2) at (2, -0.2) {};
+        \node[draw, circle, fill=white, inner sep=4pt, line width=1pt] (t2) at (2, -1.8) {};
+        \draw[line width=1.2pt] (t2.north) -- (t2.south);
+        \draw[line width=1.2pt] (t2.east) -- (t2.west);
+        \draw[line width=1.2pt] (c2) -- (t2);
+        \node[font=\tiny\bfseries\color{darkblue}, right=2pt] at (2.1, -1.0) {3. Local CX};
         
         % Step 4: Hadamard on eB
-        \draw[fill=white, draw=black, line width=0.8pt] (2.8, -0.5) rectangle (3.4, 0.1);
-        \node[font=\tiny] at (3.1, -0.2) {$H$};
+        \draw[fill=white, draw=darkblue, line width=1pt] (2.8, -0.5) rectangle (3.4, 0.1);
+        \node[font=\footnotesize\bfseries] at (3.1, -0.2) {$H$};
         
         % Step 5: Measure eB in X basis (H + Mz)
-        \draw[fill=white, draw=black, line width=0.8pt] (3.8, -0.5) rectangle (4.4, 0.1);
-        \node[font=\tiny] at (4.1, -0.2) {$\mathcal{M}_Z$};
-        \node[font=\tiny, above] at (4.1, 0.1) {$m_2$};
+        \draw[fill=white, draw=darkblue, line width=1pt] (3.8, -0.5) rectangle (4.4, 0.1);
+        \node[font=\footnotesize\bfseries] at (4.1, -0.2) {$\mathcal{M}_Z$};
+        \node[font=\tiny\bfseries, above] at (4.1, 0.1) {$m_2$};
         
         % Classical signaling lines
         % m1 to target fixup (X correction)
-        \draw[double, ->, line width=0.8pt, color=darkblue] (-2.1, -0.5) -- (-2.1, -2.3) -- (4.2, -2.3) -- (4.2, -1.8);
-        \node[draw, fill=white, font=\tiny, inner sep=1.5pt] at (4.2, -1.8) {$X^{m_1}$};
+        \draw[double, ->, line width=1pt, color=darkblue] (-2.1, -0.5) -- (-2.1, -2.3) -- (4.2, -2.3) -- (4.2, -1.8);
+        \node[draw, fill=yellow!25, font=\tiny\bfseries, inner sep=2pt] at (4.2, -1.8) {$X^{m_1}$};
         
         % m2 back to control fixup (Z correction)
-        \draw[double, ->, line width=0.8pt, color=compilerteal] (4.1, 0.1) -- (4.1, 1.5) -- (-0.8, 1.5) -- (-0.8, 1.0);
-        \node[draw, fill=white, font=\tiny, inner sep=1.5pt] at (-0.8, 1.0) {$Z^{m_2}$};
+        \draw[double, ->, line width=1pt, color=compilerteal] (4.1, 0.1) -- (4.1, 1.5) -- (-0.8, 1.5) -- (-0.8, 1.0);
+        \node[draw, fill=yellow!25, font=\tiny\bfseries, inner sep=2pt] at (-0.8, 1.0) {$Z^{m_2}$};
     \end{tikzpicture}
     \caption{Circuit architecture of the Eisert-Jacobs-Papadopoulos-Plenio (EJPP) non-local CNOT gate. The gate transfers the control excitation to QPU $B$ via entangling ancilla $e_A$, applies local CNOT on QPU $B$, and kicks back the phase correlation to $q_c$ via classical bit $m_2$.}
     \label{fig:ejpp_circuit_diagram}
 \end{figure}
 
-The execution proceeds through five synchronized steps:
+\begin{theorembox}{Correctness of the Non-Local EJPP CNOT Gate}
+The EJPP protocol deterministically implements the unitary transformation $\text{CNOT}_{c \to t} = \ket{0}\bra{0}_c \otimes \mathbb{I}_t + \ket{1}\bra{1}_c \otimes X_t$ across two discrete QPUs using exactly:
 \begin{enumerate}
-    \item \textbf{Local CNOT on QPU $A$ ($q_c \to e_A$):}
-    \begin{equation}
-        \ket{\Psi_2} = \frac{1}{\sqrt{2}} \left[ \alpha \ket{0}_{q_c} \ket{0}_{e_A} \ket{0}_{e_B} + \beta \ket{1}_{q_c} \ket{1}_{e_A} \ket{0}_{e_B} + \alpha \ket{0}_{q_c} \ket{1}_{e_A} \ket{1}_{e_B} + \beta \ket{1}_{q_c} \ket{0}_{e_A} \ket{1}_{e_B} \right] \otimes \ket{\psi_t}_B.
-    \end{equation}
-    
-    \item \textbf{Computational Measurement of $e_A$ on QPU $A$:}
-    Measuring $e_A$ yields classical bit $m_1 \in \{0, 1\}$ and projects the remaining state into:
-    \begin{equation}
-        \ket{\Psi_3} = \alpha \ket{0}_{q_c} \ket{m_1}_{e_B} \ket{\psi_t}_B + \beta \ket{1}_{q_c} \ket{m_1 \oplus 1}_{e_B} \ket{\psi_t}_B.
-    \end{equation}
-    Notice that the state of $e_B$ on QPU $B$ is now entangled with the control qubit $q_c$ on QPU $A$.
-    
-    \item \textbf{Local CNOT on QPU $B$ ($e_B \to q_t$):}
-    Applying local CNOT treats $e_B$ as the effective control qubit targeting $q_t$:
-    \begin{equation}
-        \ket{\Psi_4} = \alpha \ket{0}_{q_c} \ket{m_1}_{e_B} (\sigma_x^{m_1} \ket{\psi_t}_B) + \beta \ket{1}_{q_c} \ket{m_1 \oplus 1}_{e_B} (\sigma_x^{m_1 \oplus 1} \ket{\psi_t}_B).
-    \end{equation}
-    
-    \item \textbf{Hadamard and Measurement of $e_B$ on QPU $B$ (Phase Kickback):}
-    To decouple ancilla $e_B$ from the data register, QPU $B$ applies a Hadamard gate $H$ to $e_B$ and measures in the computational basis, yielding bit $m_2 \in \{0, 1\}$. Expanding the state in the Hadamard basis reveals:
-    \begin{equation}
-        \ket{\Psi_5} = \frac{1}{\sqrt{2}} \left[ \alpha \ket{0}_{q_c} (\sigma_x^{m_1}\ket{\psi_t}) + (-1)^{m_2} \beta \ket{1}_{q_c} (\sigma_x^{m_1 \oplus 1}\ket{\psi_t}) \right].
-    \end{equation}
-    
-    \item \textbf{Classical Feedforward Fix-Up:}
-    \begin{itemize}
-        \item QPU $A$ sends bit $m_1$ to QPU $B$. QPU $B$ applies local bit-flip $\sigma_x^{m_1}$ to $q_t$.
-        \item QPU $B$ sends bit $m_2$ to QPU $A$. QPU $A$ applies local phase-flip $\sigma_z^{m_2}$ to $q_c$.
-    \end{itemize}
+    \item $1$ pre-shared EPR pair $\ket{\Phi^+}_{AB} = \frac{1}{\sqrt{2}}(\ket{00} + \ket{11})$;
+    \item $2$ local on-chip CNOT gates (1 on QPU $A$, 1 on QPU $B$);
+    \item $2$ single-qubit projective measurements ($m_1 \in \{0, 1\}$ and $m_2 \in \{0, 1\}$);
+    \item $2$ classical bits transmitted across the inter-cryostat network ($m_1: A \to B$, $m_2: B \to A$).
 \end{enumerate}
+\end{theorembox}
 
-After these corrections, the final joint state is:
+\begin{proof}
+Let the initial state of the data qubits be $\ket{\psi_{\text{in}}} = (\alpha\ket{0}_c + \beta\ket{1}_c) \otimes (\gamma\ket{0}_t + \delta\ket{1}_t)$. Together with the pre-shared pair $\ket{\Phi^+}_{e_A e_B}$, the composite 4-qubit state is:
 \begin{equation}
-    \ket{\Psi_{\text{final}}} = \alpha \ket{0}_{q_c} \ket{\psi_t}_B + \beta \ket{1}_{q_c} (\sigma_x \ket{\psi_t}_B) \equiv \text{CNOT}(q_c, q_t) \left( \ket{\psi_c} \otimes \ket{\psi_t} \right).
+    \ket{\Psi_0} = \frac{1}{\sqrt{2}} \left( \alpha\ket{0}_c + \beta\ket{1}_c \right) \left( \ket{0}_{e_A}\ket{0}_{e_B} + \ket{1}_{e_A}\ket{1}_{e_B} \right) \left( \gamma\ket{0}_t + \delta\ket{1}_t \right).
 \end{equation}
-The operation is mathematically deterministic, completing a universal non-local CNOT using **exactly 1 EPR pair, 2 local CNOTs, and 2 classical bits** (1 forward, 1 backward).
 
-% ==============================================================================
-\section{The Cat-Entangler and Cat-Disentangler Framework}
-\label{sec:cat_entangler}
-% ==============================================================================
-
-When a single control qubit on QPU $P_0$ must simultaneously control multiple target qubits distributed across $k$ distinct QPUs $\{P_1, P_2, \dots, P_k\}$ (a common pattern in multi-controlled gates, QFT, and syndrome extraction), executing independent point-to-point tele-gates requires $k$ separate EPR pairs and induces deep serial dependencies.
-
-The DQC compiler optimizes this pattern using the **Cat-Entangler / Cat-Disentangler** paradigm. Instead of independent pairwise teleportations, the compiler synthesizes a distributed Greenberger-Horne-Zeilinger (GHZ) ``Cat'' state spanning all target QPUs.
-
-\begin{figure}[htbp]
-    \centering
-    \begin{tikzpicture}[scale=0.9, >=stealth]
-        % Horizontal wire labels
-        \node[font=\footnotesize] at (-4.5, 3) {QPU 0 ($q_c$)};
-        \node[font=\footnotesize] at (-4.5, 1.8) {QPU 0 ($a_0$)};
-        \node[font=\footnotesize] at (-4.5, 0.6) {QPU 1 ($a_1$)};
-        \node[font=\footnotesize] at (-4.5, -0.6) {QPU 2 ($a_2$)};
-        \node[font=\footnotesize] at (-4.5, -1.8) {QPU 3 ($a_3$)};
-        
-        % Horizontal wires
-        \draw[line width=1pt] (-3, 3) -- (7, 3);
-        \draw[line width=1pt] (-3, 1.8) -- (7, 1.8);
-        \draw[line width=1pt] (-3, 0.6) -- (7, 0.6);
-        \draw[line width=1pt] (-3, -0.6) -- (7, -0.6);
-        \draw[line width=1pt] (-3, -1.8) -- (7, -1.8);
-        
-        % Cat Entangler Stage
-        \draw[fill=blue!10, draw=darkblue, rounded corners=2mm, line width=1pt] (-2.5, -2.1) rectangle (-0.2, 2.1);
-        \node[font=\footnotesize\bfseries\color{darkblue}, rotate=90] at (-1.35, 0) {Cat-Entangler};
-        
-        % Coupling from qc to Cat state
-        \node[draw, circle, fill=black, inner sep=2pt] at (0.5, 3) {};
-        \node[draw, circle, fill=white, inner sep=3.5pt] (t0) at (0.5, 1.8) {};
-        \draw[line width=1pt] (t0.north) -- (t0.south);
-        \draw[line width=1pt] (t0.east) -- (t0.west);
-        \draw[line width=1pt] (0.5, 3) -- (t0);
-        
-        % Parallel Target Operations
-        \draw[fill=compilerteal!15, draw=compilerteal, rounded corners=2mm, line width=1pt] (1.5, -2.1) rectangle (3.5, 1.0);
-        \node[font=\small\bfseries\color{compilerteal}, align=center] at (2.5, -0.55) {Parallel Local\\Target Gates\\($U_{t_1}, U_{t_2}, U_{t_3}$)};
-        
-        % Cat Disentangler Stage
-        \draw[fill=purple!10, draw=quantumviolet, rounded corners=2mm, line width=1pt] (4.2, -2.1) rectangle (6.5, 2.1);
-        \node[font=\footnotesize\bfseries\color{quantumviolet}, rotate=90] at (5.35, 0) {Cat-Disentangler};
-        
-        % Annotations
-        \draw[decorate, decoration={brace, amplitude=5pt}, line width=0.8pt] (-2.5, 2.3) -- (-0.2, 2.3);
-        \node[above=6pt, font=\tiny] at (-1.35, 2.3) {1. Distribute GHZ};
-        
-        \draw[decorate, decoration={brace, amplitude=5pt}, line width=0.8pt] (1.5, 1.2) -- (3.5, 1.2);
-        \node[above=6pt, font=\tiny] at (2.5, 1.2) {2. Execute in Parallel};
-        
-        \draw[decorate, decoration={brace, amplitude=5pt}, line width=0.8pt] (4.2, 2.3) -- (6.5, 2.3);
-        \node[above=6pt, font=\tiny] at (5.35, 2.3) {3. Disentangle \& Correct};
-    \end{tikzpicture}
-    \caption{The Cat-Entangler / Cat-Disentangler operational architecture. A single control qubit $q_c$ entangles into a distributed Cat state $(\ket{00\dots0} + \ket{11\dots1})$, which simultaneously controls gates on QPUs 1, 2, and 3 in parallel $\mathcal{O}(1)$ depth before being disentangled via reverse LOCC.}
-    \label{fig:cat_entangler_architecture}
-\end{figure}
-
-The Cat-state distribution requires $k$ EPR pairs to create an $(k+1)$-qubit shared state:
+\textbf{Step 1: Local CNOT on QPU $A$ ($\text{CNOT}_{c \to e_A}$):}
 \begin{equation}
-    \ket{\text{Cat}}_{a_0 a_1 \dots a_k} = \frac{1}{\sqrt{2}} \left( \ket{0}^{\otimes (k+1)} + \ket{1}^{\otimes (k+1)} \right).
+    \ket{\Psi_1} = \frac{1}{\sqrt{2}} \left[ \alpha\ket{0}_c \left( \ket{00} + \ket{11} \right)_{e_A e_B} + \beta\ket{1}_c \left( \ket{10} + \ket{01} \right)_{e_A e_B} \right] \ket{\psi_t}.
 \end{equation}
-Once established, non-local control operations across all $k$ target QPUs execute simultaneously in parallel circuit depth $\mathcal{O}(1)$, reducing circuit latency from $\mathcal{O}(k)$ to a single broadcast round.
 
-% ==============================================================================
-\section{Distributed Multi-Controlled Gates (CCX / Toffoli)}
-\label{sec:distributed_toffoli}
-% ==============================================================================
-
-The three-qubit Toffoli (CCX) gate is ubiquitous in reversible arithmetic (Draper adders, Grover diffusion operators, Shor's modular exponentiation). When its three qubits are distributed across multiple QPUs, synthesis complexity depends entirely on the spatial partition configuration:
-
-\subsection{Partition Topology 1: Control-Target Colocated (2 QPUs)}
-Assume control $c_0$ resides on QPU $A$, while control $c_1$ and target $t$ reside on QPU $B$. 
-In this configuration, target QPU $B$ can perform a local Toffoli if control $c_0$ can be temporarily teleported or shared.
-Using the Margolus (relative-phase) Toffoli decomposition, the circuit requires **exactly 1 non-local CNOT** (1 EPR pair) if relative phase accumulation can be corrected locally, or **2 non-local CNOTs** (2 EPR pairs) for an exact Toffoli.
-
-\subsection{Partition Topology 2: Completely Disjoint (3 QPUs)}
-The most challenging configuration occurs when control $c_0 \in \text{QPU } A$, control $c_1 \in \text{QPU } B$, and target $t \in \text{QPU } C$. No two qubits share a physical chip.
-
-\begin{theorembox}{Minimum Entanglement Bound for 3-QPU Toffoli}
-Any deterministic implementation of a three-qubit Toffoli gate $\text{CCX}(c_0, c_1, t)$ partitioned across three completely disjoint quantum processors ($c_0 \in P_A, c_1 \in P_B, t \in P_C$) requires a minimum of:
+\textbf{Step 2: $Z$-basis measurement of ancilla $e_A$ yielding $m_1 \in \{0, 1\}$:}
+If $m_1 = 0$: the state collapses to $\ket{\Psi_2^{(0)}} = \alpha\ket{0}_c\ket{0}_{e_B}\ket{\psi_t} + \beta\ket{1}_c\ket{1}_{e_B}\ket{\psi_t}$.\\
+If $m_1 = 1$: the state collapses to $\ket{\Psi_2^{(1)}} = \alpha\ket{0}_c\ket{1}_{e_B}\ket{\psi_t} + \beta\ket{1}_c\ket{0}_{e_B}\ket{\psi_t}$.\\
+In compact form:
 \begin{equation}
-    N_{\text{EPR}} \ge 3 \quad \text{EPR pairs},
-    \label{eq:toffoli_epr_lower_bound}
+    \ket{\Psi_2^{(m_1)}} = \alpha\ket{0}_c X_B^{m_1}\ket{0}_{e_B}\ket{\psi_t} + \beta\ket{1}_c X_B^{m_1}\ket{1}_{e_B}\ket{\psi_t}.
 \end{equation}
-and at least 4 rounds of classical communication.
+
+\textbf{Step 3: Local CNOT on QPU $B$ ($\text{CNOT}_{e_B \to t}$):}
+\begin{equation}
+    \ket{\Psi_3} = \alpha\ket{0}_c X_B^{m_1}\ket{0}_{e_B}\ket{\psi_t} + \beta\ket{1}_c X_B^{m_1}\ket{1}_{e_B} \left( \gamma\ket{1}_t + \delta\ket{0}_t \right).
+\end{equation}
+
+\textbf{Step 4: Hadamard and $Z$-measurement on $e_B$ yielding $m_2 \in \{0, 1\}$:}
+Applying $H$ on $e_B$ transforms basis states $\ket{0} \to \frac{\ket{0}+\ket{1}}{\sqrt{2}}$ and $\ket{1} \to \frac{\ket{0}-\ket{1}}{\sqrt{2}}$. Measuring in the computational basis yields outcome $m_2$. The resulting state on data qubits $(q_c, q_t)$ is:
+\begin{equation}
+    \ket{\Psi_4} = Z_c^{m_2} X_t^{m_1} \left[ \alpha\ket{0}_c (\gamma\ket{0}_t + \delta\ket{1}_t) + \beta\ket{1}_c (\gamma\ket{1}_t + \delta\ket{0}_t) \right].
+\end{equation}
+
+\textbf{Step 5: Classical Pauli Corrections:}
+Applying local feedforward corrections $X^{m_1}$ on QPU $B$ and $Z^{m_2}$ on QPU $A$ cancels the measurement byproduct operators, yielding the exact state:
+\begin{equation}
+    \ket{\Psi_{\text{final}}} = \alpha\ket{0}_c (\gamma\ket{0}_t + \delta\ket{1}_t) + \beta\ket{1}_c (\gamma\ket{1}_t + \delta\ket{0}_t) = \text{CNOT}_{c \to t} \ket{\psi_{\text{in}}}.
+\end{equation}
+This completes the proof.
+\end{proof}
+
+\subsection{Remote Controlled-$Z$ (CZ) and Controlled-Phase $CP(\theta)$}
+Because the Controlled-$Z$ gate is symmetric ($CZ = (\mathbb{I} \otimes H) \text{CNOT} (\mathbb{I} \otimes H)$), it can be synthesized across QPUs using 1 EPR pair. For a parameterized controlled phase gate $CP(\theta) = \ket{0}\bra{0} \otimes \mathbb{I} + \ket{1}\bra{1} \otimes R_z(\theta)$, the protocol is identical except that a local $R_z(\theta)$ phase rotation is applied conditionally on QPU $B$.
+
+% ==============================================================================
+\section{The Cartan KAK Decomposition for Arbitrary $U \in \text{SU}(4)$}
+\label{sec:kak_cartan_synthesis}
+% ==============================================================================
+
+In quantum chemistry simulation (VQE) and quantum optimization (QAOA), algorithms frequently utilize non-local two-qubit unitaries that are not simple CNOTs (e.g., fermionic double-excitation gates $U(\theta) = \exp(-i \theta (X_1 X_2 Y_3 Y_4 - \dots))$).
+
+\subsection{Lie Algebraic Structure of $\mathfrak{su}(4)$}
+The Lie algebra $\mathfrak{su}(4)$ consists of $15$ trace-free anti-Hermitian $4 \times 4$ matrices spanned by two-qubit Pauli tensor products:
+\begin{equation}
+    \mathfrak{su}(4) = \text{span}_{\mathbb{R}} \left\{ i \sigma_j \otimes \sigma_k \mid (j, k) \in \{0, 1, 2, 3\}^2 \setminus \{(0, 0)\} \right\}.
+\end{equation}
+Cartan's decomposition partitions $\mathfrak{su}(4)$ into a symmetric subalgebra $\mathfrak{k}$ and a complementary subspace $\mathfrak{p}$:
+\begin{equation}
+    \mathfrak{su}(4) = \mathfrak{k} \oplus \mathfrak{p}, \quad \text{where } [\mathfrak{k}, \mathfrak{k}] \subseteq \mathfrak{k}, \quad [\mathfrak{k}, \mathfrak{p}] \subseteq \mathfrak{p}, \quad [\mathfrak{p}, \mathfrak{p}] \subseteq \mathfrak{k}.
+    \label{eq:cartan_inv_subspaces}
+\end{equation}
+Here, $\mathfrak{k} = \mathfrak{su}(2) \oplus \mathfrak{su}(2)$ represents the subalgebra of local single-qubit operations:
+\begin{equation}
+    \mathfrak{k} = \text{span}_{\mathbb{R}} \left\{ i \sigma_k \otimes \mathbb{I}, \; i \mathbb{I} \otimes \sigma_k \mid k \in \{x, y, z\} \right\} \quad (\dim \mathfrak{k} = 6),
+\end{equation}
+and $\mathfrak{p}$ represents the 9-dimensional non-local entangling subspace:
+\begin{equation}
+    \mathfrak{p} = \text{span}_{\mathbb{R}} \left\{ i \sigma_j \otimes \sigma_k \mid j, k \in \{x, y, z\} \right\} \quad (\dim \mathfrak{p} = 9).
+\end{equation}
+
+The maximal Abelian subalgebra (Cartan subalgebra) $\mathfrak{a} \subset \mathfrak{p}$ is spanned by three mutually commuting Pauli operators:
+\begin{equation}
+    \mathfrak{a} = \text{span}_{\mathbb{R}} \left\{ i \sigma_x \otimes \sigma_x, \, i \sigma_y \otimes \sigma_y, \, i \sigma_z \otimes \sigma_z \right\} \quad (\dim \mathfrak{a} = 3).
+\end{equation}
+
+\subsection{Makhlin Local Invariants and Bell Basis Mapping}
+Two unitaries $U, V \in \text{SU}(4)$ are \keyterm{locally equivalent} (denoted $U \sim_{\text{loc}} V$) if there exist single-qubit unitaries $A_1, B_1, A_2, B_2 \in \text{SU}(2)$ such that $U = (A_1 \otimes B_1) V (A_2 \otimes B_2)$. 
+
+Makhlin proved that the local equivalence class of any $U \in \text{SU}(4)$ is completely uniquely determined by three polynomial invariants $(g_1, g_2, g_3) \in \mathbb{R}^3$. To compute these invariants, we transform $U$ to the magic Bell basis via the transformation matrix $Q$:
+\begin{equation}
+    Q = \frac{1}{\sqrt{2}}\begin{pmatrix} 1 & 0 & 0 & i \\ 0 & i & 1 & 0 \\ 0 & i & -1 & 0 \\ 1 & 0 & 0 & -i \end{pmatrix}, \quad U_B = Q^\dagger U Q.
+\end{equation}
+We define the symmetric matrix $m(U) = U_B^T U_B$. The Makhlin invariants are then given explicitly by:
+\begin{align}
+    g_1(U) &= \frac{\text{Re}\left(\text{Tr}^2(m(U))\right)}{16}, \\
+    g_2(U) &= \frac{\text{Im}\left(\text{Tr}^2(m(U))\right)}{16}, \\
+    g_3(U) &= \frac{\text{Tr}^2(m(U)) - \text{Tr}(m(U)^2)}{4}.
+\end{align}
+
+\subsection{Weyl Chamber Coordinates and Inverse Mapping}
+Let the eigenvalues of $m(U)$ be $\lambda_k = e^{2i \theta_k}$ for $k \in \{1, 2, 3, 4\}$, where $\sum_{k=1}^4 \theta_k = 0 \pmod{2\pi}$. The canonical coordinates $(c_1, c_2, c_3)$ inside the Weyl chamber are obtained by sorting and linearly transforming the eigenphases:
+\begin{align}
+    c_1 &= \frac{\theta_1 + \theta_2}{2}, \\
+    c_2 &= \frac{\theta_1 + \theta_3}{2}, \\
+    c_3 &= \frac{\theta_1 + \theta_4}{2}.
+\end{align}
+Conversely, the Makhlin invariants are expressed directly as trigonometric functions of $(c_1, c_2, c_3)$:
+\begin{align}
+    g_1(c_1, c_2, c_3) &= \cos^2(2c_1)\cos^2(2c_2)\cos^2(2c_3) - \sin^2(2c_1)\sin^2(2c_2)\sin^2(2c_3), \\
+    g_2(c_1, c_2, c_3) &= \frac{1}{4}\sin(4c_1)\sin(4c_2)\sin(4c_3), \\
+    g_3(c_1, c_2, c_3) &= \cos(4c_1) + \cos(4c_2) + \cos(4c_3).
+\end{align}
+
+\begin{theorembox}{Cartan / KAK Canonical Decomposition Theorem}
+Every two-qubit unitary operator $U \in \text{SU}(4)$ can be factored into:
+\begin{equation}
+    U = (A_1 \otimes B_1) \cdot \exp\left( -i \left[ c_1 \sigma_x \otimes \sigma_x + c_2 \sigma_y \otimes \sigma_y + c_3 \sigma_z \otimes \sigma_z \right] \right) \cdot (A_2 \otimes B_2),
+    \label{eq:kak_canonical_form}
+\end{equation}
+where $A_1, A_2, B_1, B_2 \in \text{SU}(2)$ are local single-qubit rotations, and the canonical coordinates $(c_1, c_2, c_3) \in \mathbb{R}^3$ reside inside the geometric \keyterm{Weyl Chamber}:
+\begin{equation}
+    \frac{\pi}{4} \ge c_1 \ge c_2 \ge |c_3| \ge 0.
+    \label{eq:weyl_chamber_bounds}
+\end{equation}
 \end{theorembox}
 
 \begin{figure}[htbp]
     \centering
-    \begin{tikzpicture}[scale=0.9, >=stealth]
-        % Three QPU horizontal bands
-        \draw[rounded corners=2mm, fill=blue!5, draw=darkblue, line width=0.8pt] (-5, 2.2) rectangle (5, 3.8);
-        \node[font=\bfseries\color{darkblue}, left] at (-5.2, 3) {QPU A};
-        \draw[line width=1pt] (-4.5, 3) node[left] {$c_0$} -- (4.5, 3) node[right] {$c_0$};
+    \begin{tikzpicture}[scale=1.1, >=stealth]
+        % Tetrahedron vertices
+        \coordinate (O) at (0, 0);
+        \coordinate (L) at (4.5, 0);
+        \coordinate (M) at (4.5, 3.2);
+        \coordinate (B) at (2.2, 4.2);
         
-        \draw[rounded corners=2mm, fill=green!5, draw=compilerteal, line width=0.8pt] (-5, 0.2) rectangle (5, 1.8);
-        \node[font=\bfseries\color{compilerteal}, left] at (-5.2, 1) {QPU B};
-        \draw[line width=1pt] (-4.5, 1) node[left] {$c_1$} -- (4.5, 1) node[right] {$c_1$};
+        % Fill faces
+        \fill[blue!10, opacity=0.7] (O) -- (L) -- (M) -- cycle;
+        \fill[compilerteal!15, opacity=0.7] (O) -- (M) -- (B) -- cycle;
+        \fill[quantumviolet!10, opacity=0.5] (L) -- (M) -- (B) -- cycle;
+        \fill[gray!10, opacity=0.4] (O) -- (L) -- (B) -- cycle;
         
-        \draw[rounded corners=2mm, fill=purple!5, draw=quantumviolet, line width=0.8pt] (-5, -1.8) rectangle (5, -0.2);
-        \node[font=\bfseries\color{quantumviolet}, left] at (-5.2, -1) {QPU C};
-        \draw[line width=1pt] (-4.5, -1) node[left] {$t$} -- (4.5, -1) node[right] {$t$};
+        % Edges
+        \draw[line width=1.2pt, color=darkblue] (O) -- (L) node[midway, below, font=\scriptsize\bfseries] {1 ebit (CNOT line)};
+        \draw[line width=1.2pt, color=compilerteal] (L) -- (M) node[midway, right, font=\scriptsize\bfseries] {2 ebits};
+        \draw[line width=1.2pt, color=quantumviolet] (M) -- (B) node[midway, above right, font=\scriptsize\bfseries] {3 ebits};
+        \draw[line width=1.2pt, color=darkblue] (O) -- (M);
+        \draw[line width=1.2pt, color=darkblue] (O) -- (B);
+        \draw[line width=1.2pt, dashed, color=gray!80] (L) -- (B);
         
-        % Distributed T and T^\dagger gates
-        % Step 1: Remote CNOT between A and B
-        \draw[<->, line width=1.5pt, color=darkblue] (-3, 3) -- node[midway, fill=white, font=\tiny] {Telegate 1} (-3, 1);
-        \draw[fill=white, draw=black] (-2, 0.7) rectangle (-1.4, 1.3);
-        \node[font=\tiny] at (-1.7, 1) {$T^\dagger$};
+        % Nodes
+        \node[draw, circle, fill=black, inner sep=2.5pt, label=left:{\textbf{O} $(0,0,0)$ [Identity]}] at (O) {};
+        \node[draw, circle, fill=darkblue, inner sep=2.5pt, label=right:{\textbf{L} $(\frac{\pi}{4},0,0)$ [CNOT / CZ]}] at (L) {};
+        \node[draw, circle, fill=compilerteal, inner sep=2.5pt, label=above right:{\textbf{M} $(\frac{\pi}{4},\frac{\pi}{4},0)$ [iSWAP / DCNOT]}] at (M) {};
+        \node[draw, circle, fill=quantumviolet, inner sep=2.5pt, label=above:{\textbf{B} $(\frac{\pi}{4},\frac{\pi}{4},\frac{\pi}{4})$ [SWAP]}] at (B) {};
         
-        % Step 2: Remote CNOT between B and C
-        \draw[<->, line width=1.5pt, color=compilerteal] (-0.5, 1) -- node[midway, fill=white, font=\tiny] {Telegate 2} (-0.5, -1);
-        \draw[fill=white, draw=black] (0.5, -1.3) rectangle (1.1, -0.7);
-        \node[font=\tiny] at (0.8, -1) {$T$};
-        
-        % Step 3: Remote CNOT between A and C
-        \draw[<->, line width=1.5pt, color=quantumviolet] (2.2, 3) -- node[midway, fill=white, font=\tiny] {Telegate 3} (2.2, -1);
-        \draw[fill=white, draw=black] (3.2, -1.3) rectangle (3.8, -0.7);
-        \node[font=\tiny] at (3.5, -1) {$T^\dagger$};
+        % Annotations
+        \node[draw, fill=yellow!25, font=\scriptsize\bfseries, inner sep=2pt] at (2.2, 1.2) {1-Ebit Plane ($c_2=c_3=0$)};
+        \node[draw, fill=orange!25, font=\scriptsize\bfseries, inner sep=2pt] at (3.5, 2.5) {2-Ebit Region};
+        \node[draw, fill=red!20, font=\scriptsize\bfseries, inner sep=2pt] at (1.8, 3.2) {3-Ebit Apex};
     \end{tikzpicture}
-    \caption{Distributed synthesis of a Toffoli gate across three physically isolated QPUs ($P_A, P_B, P_C$). Non-local telegates mediate intermediate phase accumulation, consuming 3 EPR pairs across the tripartite network.}
-    \label{fig:tripartite_toffoli}
+    \caption{The Weyl Chamber tetrahedron of $\mathrm{SU}(4)$. Any two-qubit unitary maps to a unique coordinate $(c_1, c_2, c_3)$. The base line $O\text{--}L$ contains all 1-ebit gates (CNOT, Controlled-Phase). Points on the surface require at most 2 ebits, while the interior and apex $B$ (SWAP) require at most 3 ebits.}
+    \label{fig:weyl_chamber_tetrahedron}
 \end{figure}
 
-The DQC compiler synthesizes this tripartite Toffoli by decomposing the unitary into the Clifford+$T$ basis:
-\begin{align}
-    \text{CCX} &= (H \otimes \mathbb{I} \otimes \mathbb{I}) \cdot \text{CNOT}(c_1, t) \cdot T_t^\dagger \cdot \text{CNOT}(c_0, t) \cdot T_t \nonumber \\
-    &\quad \cdot \text{CNOT}(c_1, t) \cdot T_t^\dagger \cdot \text{CNOT}(c_0, t) \cdot (T_{c_1} \otimes T_t \otimes H) \dots
-\end{align}
-By applying telegate commutation passes, the compiler merges redundant tele-CNOT operations, strictly achieving the theoretical lower bound of 3 EPR pairs.
+\begin{table}[htbp]
+\centering
+\caption{Weyl Chamber Canonical Coordinates, Makhlin Invariants, and Minimal Distributed Costs}
+\label{tab:weyl_coordinates_cost}
+\begin{tabular}{l c c c c c}
+\toprule
+\textbf{Two-Qubit Gate ($U$)} & \textbf{Coordinates $(c_1, c_2, c_3)$} & \textbf{$g_1$} & \textbf{$g_2$} & \textbf{$g_3$} & \textbf{EPR Pairs} \\
+\midrule
+Identity ($\mathbb{I} \otimes \mathbb{I}$) & $(0, 0, 0)$ & 1 & 0 & 3 & 0 \\
+CNOT / CZ & $(\pi/4, 0, 0)$ & 0 & 0 & 1 & 1 \\
+Controlled Phase $CP(\theta)$ & $(\theta/2, 0, 0)$ & $\cos^2(\theta)$ & 0 & $1 + 2\cos(\theta)$ & 1 \\
+iSWAP & $(\pi/4, \pi/4, 0)$ & 0 & 0 & $-1$ & 2 \\
+$\sqrt{\text{iSWAP}}$ & $(\pi/8, \pi/8, 0)$ & 0 & 0 & 0 & 2 \\
+$B$-Gate & $(\pi/4, \pi/8, 0)$ & 0 & 0 & 0 & 2 \\
+Double-Excitation $U(\theta)$ & $(\theta/2, \theta/2, 0)$ & $\cos^2(\theta)$ & 0 & $2\cos(2\theta)-1$ & 2 \\
+SWAP & $(\pi/4, \pi/4, \pi/4)$ & $-1$ & 0 & $-3$ & 2 \\
+Arbitrary $U \in \text{SU}(4)$ & $(c_1, c_2, c_3)$ & $g_1 \in [-1, 1]$ & $g_2 \in [-1, 1]$ & $g_3 \in [-3, 3]$ & $\le 3$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{theorembox}{The 3-Ebit Universality Bound}
+Any non-local two-qubit unitary gate $U \in \text{SU}(4)$ acting across two discrete QPUs can be synthesized using at most \textbf{3 EPR pairs} and local single-qubit Clifford+$T$ gate operations.
+\end{theorembox}
+
+\begin{algorithmbox}{Cartan KAK Non-Local Gate Synthesis}
+\textbf{Input:} Target Unitary $U \in \mathrm{SU}(4)$, QPU locations $\pi(q_1), \pi(q_2)$.\\
+\textbf{Output:} Distributed Circuit DAG implementing $U$.
+
+\begin{enumerate}[leftmargin=1.5em]
+    \item Transform $U$ to the magic basis: $U_M = M^\dagger U M$, where $M = \frac{1}{\sqrt{2}} \begin{pmatrix} 1 & 0 & 0 & i \\ 0 & i & 1 & 0 \\ 0 & i & -1 & 0 \\ 1 & 0 & 0 & -i \end{pmatrix}$.
+    \item Compute symmetric matrix $W = U_M^T U_M$.
+    \item Diagonalize $W$: $W = V D V^T$, where $D = \text{diag}(e^{4i c_1}, e^{4i c_2}, e^{4i c_3}, e^{-4i(c_1+c_2+c_3)})$.
+    \item Extract Weyl coordinates $(c_1, c_2, c_3)$ inside the fundamental chamber.
+    \item Compute local pre- and post-rotations: $A_1, B_1, A_2, B_2 \in \mathrm{SU}(2)$.
+    \item \textbf{Ebit Optimization Branch:}
+    \begin{itemize}
+        \item If $c_2 = c_3 = 0$: Emit local rotations + 1 Remote CNOT (1 ebit).
+        \item If $c_3 = 0$: Emit local rotations + 2 Remote CNOTs (2 ebits).
+        \item Otherwise: Emit local rotations + 3 Remote CNOTs (3 ebits).
+    \end{itemize}
+    \item \textbf{Return} Synthesized distributed instruction stream.
+\end{enumerate}
+\end{algorithmbox}
 
 % ==============================================================================
-\section{General $n$-Qubit Multi-Controlled-X (MCX) Synthesis}
+\section{Parallel Broadcasting: The Cat-Entangler Framework}
+\label{sec:cat_entangler_framework}
+% ==============================================================================
+
+When an algorithm requires 1-to-$M$ control broadcasting (e.g., Grover diffusion, Quantum Phase Estimation, or GHZ preparation across $M$ QPUs), executing $M$ sequential EJPP CNOT gates incurs linear time delay $\mathcal{O}(M \cdot \tau_{\text{link}})$.
+
+The DQC compiler synthesizes \keyterm{Cat-Entangler} states $\ket{\text{CAT}_M} = \frac{1}{\sqrt{2}}(\ket{0}^{\otimes M} + \ket{1}^{\otimes M})$ across all recipient QPUs in parallel:
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.92, >=stealth]
+        % Source QPU
+        \draw[rounded corners=2mm, fill=blue!5, draw=darkblue, line width=1pt] (-5.5, 0.5) rectangle (-2.5, 2.5);
+        \node[font=\footnotesize\bfseries\color{darkblue}] at (-4, 2.1) {QPU Control};
+        \node[font=\small\bfseries] at (-5, 1.2) {$\ket{\psi_c}$};
+        \draw[line width=1.2pt] (-4.5, 1.2) -- (-3, 1.2);
+        \node[draw, circle, fill=darkblue, inner sep=2pt] at (-3.5, 1.2) {};
+        
+        % Cat state distribution tree
+        \draw[line width=1.5pt, color=compilerteal, ->] (-3.5, 1.2) -- (-1.5, 3) node[right, font=\tiny\bfseries] {EPR Link 1};
+        \draw[line width=1.5pt, color=compilerteal, ->] (-3.5, 1.2) -- (-1.5, 1.2) node[right, font=\tiny\bfseries] {EPR Link 2};
+        \draw[line width=1.5pt, color=compilerteal, ->] (-3.5, 1.2) -- (-1.5, -0.6) node[right, font=\tiny\bfseries] {EPR Link 3};
+        
+        % Target QPUs
+        \draw[rounded corners=2mm, fill=green!5, draw=compilerteal, line width=1pt] (1.5, 2.2) rectangle (4.5, 3.8);
+        \node[font=\footnotesize\bfseries\color{compilerteal}] at (3, 3.5) {QPU Target 1};
+        \draw[line width=1.2pt] (1.8, 2.7) -- (4.2, 2.7);
+        \node[draw, circle, fill=white, inner sep=3pt, line width=1pt] at (3, 2.7) {};
+        
+        \draw[rounded corners=2mm, fill=green!5, draw=compilerteal, line width=1pt] (1.5, 0.4) rectangle (4.5, 2.0);
+        \node[font=\footnotesize\bfseries\color{compilerteal}] at (3, 1.7) {QPU Target 2};
+        \draw[line width=1.2pt] (1.8, 0.9) -- (4.2, 0.9);
+        \node[draw, circle, fill=white, inner sep=3pt, line width=1pt] at (3, 0.9) {};
+        
+        \draw[rounded corners=2mm, fill=green!5, draw=compilerteal, line width=1pt] (1.5, -1.4) rectangle (4.5, 0.2);
+        \node[font=\footnotesize\bfseries\color{compilerteal}] at (3, -0.1) {QPU Target 3};
+        \draw[line width=1.2pt] (1.8, -0.9) -- (4.2, -0.9);
+        \node[draw, circle, fill=white, inner sep=3pt, line width=1pt] at (3, -0.9) {};
+        
+        \node[draw, fill=yellow!30, font=\tiny\bfseries, inner sep=3pt] at (0, -1.8) {Broadcast Latency: $\mathcal{O}(\log M)$};
+    \end{tikzpicture}
+    \caption{The Cat-Entangler Parallel Broadcasting Architecture. By preparing a distributed Cat state $\ket{\text{CAT}_M}$, a single control qubit broadcasts entangling operations to $M$ QPUs simultaneously in $\mathcal{O}(\log M)$ depth rather than $\mathcal{O}(M)$ sequential telegates.}
+    \label{fig:cat_entangler_tree}
+\end{figure}
+
+\subsection{Statevector Evolution of Cat-Entangler Broadcasting}
+Let the control state be $\ket{\psi_c} = \alpha\ket{0} + \beta\ket{1}$, and let the $M$ target qubits be initialized in states $\ket{\phi_k} = \gamma_k \ket{0} + \delta_k \ket{1}$ for $k \in \{1, \dots, M\}$.
+
+\begin{enumerate}
+    \item \textbf{Cat-State Creation:} Across the $M$ target QPUs, distribute an $M$-qubit GHZ state:
+    \begin{equation}
+        \ket{\text{GHZ}_M} = \frac{1}{\sqrt{2}} \left( \ket{0}^{\otimes M} + \ket{1}^{\otimes M} \right)_{e_1 e_2 \dots e_M}.
+    \end{equation}
+    This requires $M-1$ ebits and is created via a balanced binary tree in $\lceil \log_2 M \rceil$ network rounds.
+    
+    \item \textbf{Control Entanglement:} The control qubit $q_c$ on QPU 0 applies a local CNOT onto ancilla $e_1$, followed by measuring $e_1$ in the $Z$-basis to yield outcome $s \in \{0, 1\}$. This teleports the control superposition into the distributed Cat state:
+    \begin{equation}
+        \ket{\Psi_1} = \alpha \ket{0}_c \ket{s}^{\otimes M}_{e_1 \dots e_M} + \beta \ket{1}_c \ket{1 \oplus s}^{\otimes M}_{e_1 \dots e_M}.
+    \end{equation}
+    
+    \item \textbf{Local Parallel Target Execution:} Each QPU $k \in \{1, \dots, M\}$ simultaneously executes a local CNOT from ancilla $e_k$ onto target data qubit $q_{t, k}$.
+    
+    \item \textbf{Cat-Disentangler Measurement:} Each ancilla $e_k$ is rotated via Hadamard $H$ and measured in the computational basis, yielding outcomes $m_k \in \{0, 1\}$.
+    
+    \item \textbf{Parity Feedforward Correction:} The parity bit $P = \bigoplus_{k=1}^M m_k$ is broadcast back to QPU 0. Applying $Z^P$ on control qubit $q_c$ completes the exact $1 \to M$ broadcast operation with 0 residual ancilla entanglement.
+\end{enumerate}
+
+% ==============================================================================
+\section{Multi-Controlled Gate Synthesis (Toffoli and MCX)}
 \label{sec:mcx_synthesis}
 % ==============================================================================
 
-For general multi-controlled gates $\text{C}^k\text{NOT}$ with $k \ge 3$ control qubits distributed across $M$ QPUs, direct Clifford+$T$ decomposition without ancillae scales exponentially as $\mathcal{O}(2^k)$ T-gates. 
+Multi-controlled operations such as Toffoli (CCX), Fredkin (CSWAP), and general Multi-Controlled-X ($C^k X$) gates are critical for arithmetic subroutines, Grover oracles, and quantum error correction decoders.
 
-To achieve polynomial efficiency, the DQC compiler implements **Distributed Ancilla Borrowing**. Every QPU contains idle computation qubits that are temporarily unentangled during the execution window. The compiler borrows these clean idle qubits as dirty ancillae, constructing a distributed V-ladder network:
+\subsection{Distributed Three-Qubit Toffoli Synthesis Across 3 Independent QPUs}
+\label{sec:distributed_3q_toffoli}
 
+Consider a three-qubit Toffoli gate $\text{CCX}(c_1, c_2 \to t)$ where the first control $c_1$ resides on QPU $A$, the second control $c_2$ resides on QPU $B$, and the target $t$ resides on QPU $C$. In a monolithic processor, the optimal Clifford+$T$ decomposition requires 6 CNOT gates and 7 $T$ gates (or 4 $T$ gates with an ancilla). 
+
+In a distributed multi-QPU system, naively replacing every CNOT with a remote EJPP telegate would consume $6\times \text{EJPP} = 6\text{ EPR pairs}$ and require 12 classical message exchanges across cryostats.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.88, >=stealth]
+        % QPU A Container
+        \draw[rounded corners=2mm, fill=blue!5, draw=darkblue, line width=1pt] (-6.0, 2.0) rectangle (6.0, 3.2);
+        \node[font=\footnotesize\bfseries\color{darkblue}, anchor=west] at (-5.8, 2.9) {QPU A (Control $c_1$)};
+        \draw[line width=1.2pt] (-5.5, 2.4) node[left] {$c_1$} -- (5.5, 2.4);
+        
+        % QPU B Container
+        \draw[rounded corners=2mm, fill=blue!5, draw=darkblue, line width=1pt] (-6.0, 0.4) rectangle (6.0, 1.6);
+        \node[font=\footnotesize\bfseries\color{darkblue}, anchor=west] at (-5.8, 1.3) {QPU B (Control $c_2$)};
+        \draw[line width=1.2pt] (-5.5, 0.8) node[left] {$c_2$} -- (5.5, 0.8);
+        
+        % QPU C Container
+        \draw[rounded corners=2mm, fill=compilerteal!10, draw=compilerteal, line width=1pt] (-6.0, -1.6) rectangle (6.0, -0.2);
+        \node[font=\footnotesize\bfseries\color{compilerteal}, anchor=west] at (-5.8, -0.5) {QPU C (Target $t$)};
+        \draw[line width=1.2pt] (-5.5, -1.0) node[left] {$t$} -- (5.5, -1.0);
+        
+        % Gates and Interactions
+        % Hadamard on Target
+        \draw[fill=white, draw=compilerteal, line width=1pt] (-4.8, -1.3) rectangle (-4.2, -0.7);
+        \node[font=\footnotesize\bfseries] at (-4.5, -1.0) {$H$};
+        
+        % Remote CNOT 1: c2 -> t
+        \node[draw, circle, fill=darkblue, inner sep=2pt] at (-3.5, 0.8) {};
+        \node[draw, circle, fill=white, inner sep=3pt, line width=1pt] (t1) at (-3.5, -1.0) {};
+        \draw[line width=1pt] (t1.north) -- (t1.south);
+        \draw[line width=1pt] (t1.east) -- (t1.west);
+        \draw[<->, dashed, line width=1.2pt, color=quantumviolet] (-3.5, 0.8) -- node[left, font=\tiny] {Telegate 1} (t1);
+        
+        % T dagger on target
+        \draw[fill=white, draw=compilerteal, line width=1pt] (-2.8, -1.3) rectangle (-2.0, -0.7);
+        \node[font=\tiny\bfseries] at (-2.4, -1.0) {$T^\dagger$};
+        
+        % Remote CNOT 2: c1 -> t
+        \node[draw, circle, fill=darkblue, inner sep=2pt] at (-1.3, 2.4) {};
+        \node[draw, circle, fill=white, inner sep=3pt, line width=1pt] (t2) at (-1.3, -1.0) {};
+        \draw[line width=1pt] (t2.north) -- (t2.south);
+        \draw[line width=1pt] (t2.east) -- (t2.west);
+        \draw[<->, dashed, line width=1.2pt, color=quantumviolet] (-1.3, 2.4) -- node[left, font=\tiny] {Telegate 2} (t2);
+        
+        % T on target
+        \draw[fill=white, draw=compilerteal, line width=1pt] (-0.6, -1.3) rectangle (-0.0, -0.7);
+        \node[font=\tiny\bfseries] at (-0.3, -1.0) {$T$};
+        
+        % Remote CNOT 3: c2 -> t
+        \node[draw, circle, fill=darkblue, inner sep=2pt] at (0.7, 0.8) {};
+        \node[draw, circle, fill=white, inner sep=3pt, line width=1pt] (t3) at (0.7, -1.0) {};
+        \draw[line width=1pt] (t3.north) -- (t3.south);
+        \draw[line width=1pt] (t3.east) -- (t3.west);
+        \draw[<->, dashed, line width=1.2pt, color=quantumviolet] (0.7, 0.8) -- node[left, font=\tiny] {Telegate 3} (t3);
+        
+        % T dagger on target
+        \draw[fill=white, draw=compilerteal, line width=1pt] (1.4, -1.3) rectangle (2.2, -0.7);
+        \node[font=\tiny\bfseries] at (1.8, -1.0) {$T^\dagger$};
+        
+        % Remote CNOT 4: c1 -> t
+        \node[draw, circle, fill=darkblue, inner sep=2pt] at (2.9, 2.4) {};
+        \node[draw, circle, fill=white, inner sep=3pt, line width=1pt] (t4) at (2.9, -1.0) {};
+        \draw[line width=1pt] (t4.north) -- (t4.south);
+        \draw[line width=1pt] (t4.east) -- (t4.west);
+        \draw[<->, dashed, line width=1.2pt, color=quantumviolet] (2.9, 2.4) -- node[left, font=\tiny] {Telegate 4} (t4);
+        
+        % Final H on target
+        \draw[fill=white, draw=compilerteal, line width=1pt] (3.6, -1.3) rectangle (4.2, -0.7);
+        \node[font=\footnotesize\bfseries] at (3.9, -1.0) {$H$};
+    \end{tikzpicture}
+    \caption{Distributed Three-QPU Toffoli (CCX) gate synthesis across QPUs $A, B, C$. Inter-QPU CNOT interactions execute via pre-shared EPR telegates, while local single-qubit $T$ and $T^\dagger$ gates execute on the target QPU without communication.}
+    \label{fig:distributed_toffoli_circuit}
+\end{figure}
+
+\begin{theorembox}{Correctness of Distributed Cat-State Toffoli Synthesis (Jones, 2013)}
+A three-qubit Toffoli gate $\text{CCX}(c_1, c_2 \to t)$ across three discrete QPUs can be deterministically implemented using:
 \begin{equation}
-    \text{EPR}_{\text{MCX}}(k, M) \le 2(M - 1) + 4 \cdot \text{Cut}(k),
-    \label{eq:mcx_cost_formula}
+    N_{\text{EPR}} = 3\text{ Bell pairs (or 1 tripartite GHZ state)} + 4\text{ }T\text{ gates} + 1\text{ ancilla qubit}.
 \end{equation}
-where $\text{Cut}(k)$ is the number of control wires severed by the partition boundary.
+\end{theorembox}
 
-This synthesis algorithm guarantees that any arbitrary quantum program can be distributed over a multi-QPU network with bounded communication overhead, establishing the mathematical transformation rules executed by Pass 3 of our MLIR compilation pipeline.
+\begin{proof}
+1. Nodes $A, B, C$ establish a shared tripartite GHZ state $\ket{\text{GHZ}_3} = \frac{1}{\sqrt{2}}(\ket{000} + \ket{111})_{e_A e_B e_C}$ using 2 EPR pairs in $\lceil \log_2 3 \rceil = 2$ network rounds.
+
+2. On QPU $A$, apply local CNOT from $c_1 \to e_A$ and measure $e_A$ in the $Z$-basis yielding $m_A \in \{0, 1\}$.\\
+On QPU $B$, apply local CNOT from $c_2 \to e_B$ and measure $e_B$ in the $Z$-basis yielding $m_B \in \{0, 1\}$.
+
+3. The state of ancilla $e_C$ on QPU $C$ collapses to $\ket{\psi_{\text{anc}}} = \alpha \ket{m_A \oplus m_B} + \beta \ket{1 \oplus m_A \oplus m_B}$, where $\alpha, \beta$ encode the joint coincidence amplitude $\ket{11}_{c_1 c_2}$.
+
+4. QPU $C$ applies local controlled-$Z$ from $e_C \to t$, followed by measurement of $e_C$ in the $X$-basis yielding $m_C$.
+
+5. Real-time classical feedforward of $m_A, m_B, m_C$ applies local Pauli corrections $X_t^{m_A m_B}$ and $Z_{c_1, c_2}^{m_C}$, completing the non-local CCX transformation deterministically.
+\end{proof}
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Comparison of Distributed Non-Local Synthesis Paradigms for 3-Qubit Toffoli and Fredkin Gates}
+\label{tab:distributed_toffoli_comparison}
+\begin{tabularx}{\textwidth}{l r r r r X}
+\toprule
+\textbf{Synthesis Protocol} & \textbf{EPR Pairs} & \textbf{Classical Bits} & \textbf{$T$-Count} & \textbf{Network Rounds} & \textbf{Primary Advantage} \\
+\midrule
+\textbf{Naive Telegate CCX} & 6 & 12 & 7 & 6 & No ancilla required \\
+\textbf{Jones Cat-GHZ CCX} & \textbf{3} & 6 & 4 & \textbf{2} & Minimal EPR consumption \\
+\textbf{Gottesman-Chuang Telemetry} & 4 & 8 & \textbf{1} (Magic) & 3 & Fault-tolerant distillation compatible \\
+\textbf{Distributed Fredkin (CSWAP)} & 4 & 8 & 7 & 3 & Direct multi-QPU state routing \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Distributed Fredkin (Controlled-SWAP) Gate Synthesis}
+The non-local Fredkin gate $\text{CSWAP}(c \to t_1, t_2)$ swaps target qubits $t_1 \in \text{QPU}_B$ and $t_2 \in \text{QPU}_C$ conditioned on control qubit $c \in \text{QPU}_A$.
+
+Using the algebraic identity $\text{CSWAP} = \text{CNOT}_{t_2 \to t_1} \cdot \text{Toffoli}(c, t_1 \to t_2) \cdot \text{CNOT}_{t_2 \to t_1}$, the compiler synthesizes the non-local Fredkin gate using exactly **4 EPR pairs**:
+\begin{equation}
+    \text{CSWAP}_{\text{dist}} = \text{TelegateCX}(t_2 \to t_1) \cdot \text{DistCCX}(c, t_1 \to t_2) \cdot \text{TelegateCX}(t_2 \to t_1).
+    \label{eq:distributed_fredkin_expansion}
+\end{equation}
+
+% ==============================================================================
+% WORKED EXAMPLE
+% ==============================================================================
+
+\begin{examplebox}{Synthesizing a Fermionic Simulation Gate $fSim(\pi/2, \pi/4)$}
+Consider synthesizing a non-local fermionic simulation gate across two QPUs:
+\begin{equation}
+    fSim\left(\frac{\pi}{2}, \frac{\pi}{4}\right) = \begin{pmatrix} 1 & 0 & 0 & 0 \\ 0 & 0 & -i & 0 \\ 0 & -i & 0 & 0 \\ 0 & 0 & 0 & e^{-i \pi/4} \end{pmatrix}.
+\end{equation}
+
+\textbf{Step 1: Compute Canonical Coordinates:}
+Evaluating the magic basis eigenvalues yields:
+\begin{equation}
+    c_1 = \frac{\pi}{4}, \quad c_2 = \frac{\pi}{4}, \quad c_3 = \frac{\pi}{8}.
+\end{equation}
+Because $c_3 \neq 0$, the gate resides in the interior of the Weyl chamber.
+
+\textbf{Step 2: Circuit Synthesis:}
+The compiler emits:
+\begin{enumerate}
+    \item Local pre-rotations: $R_z(-\pi/8) \otimes R_z(-\pi/8)$.
+    \item 3 Remote EJPP CNOTs interleaved with single-qubit rotations.
+    \item Total resources consumed: \textbf{3 EPR pairs}, 6 classical bits, 6 local CNOTs.
+    \item Total execution time: $3 \times \tau_{\text{EJPP}} = 3 \times 1.25\text{ }\mu\text{s} = \mathbf{3.75\text{ }\mu\text{s}}$.
+\end{enumerate}
+\end{examplebox}
+
+% ==============================================================================
+% CHAPTER SUMMARY
+% ==============================================================================
+
+\begin{summarybox}{Key Invariants of Chapter 6}
+\begin{enumerate}
+    \item \textbf{Remote CNOT Invariant:} Non-local CNOT gates execute deterministically via the EJPP protocol using exactly 1 EPR pair, 2 local CNOTs, 2 measurements, and 2 classical bits.
+    \item \textbf{Cartan KAK Universality:} Any two-qubit unitary $U \in \text{SU}(4)$ is synthesized with at most 3 non-local CNOTs (3 ebits) and local single-qubit rotations.
+    \item \textbf{Weyl Chamber Geometry:} Canonical coordinates $(c_1, c_2, c_3)$ define the fundamental entangling cost: 1 ebit for edges, 2 ebits for faces, and 3 ebits for the interior.
+    \item \textbf{Logarithmic Broadcasting:} Cat-entangler states enable 1-to-$M$ control broadcasting in $\mathcal{O}(\log M)$ depth, preventing dephasing in multi-controlled operations.
+    \item \textbf{Distributed MCX Gadgets:} Non-local Toffoli gates across 3 QPUs are synthesizable using 3 ebits via distributed GHZ states.
+\end{enumerate}
+\end{summarybox}
+
+% ==============================================================================
+% EXERCISES
+% ==============================================================================
+
+\section*{Exercises}
+\addcontentsline{toc}{section}{Exercises}
+
+\begin{enumerate}[label=\textbf{6.\arabic*.}]
+    \item \textbf{Remote CZ Protocol.} Derive the complete circuit and statevector evolution for a non-local Controlled-$Z$ gate consuming 1 EPR pair.
+    \item \textbf{KAK Coordinate Mapping.} Given an iSWAP gate $U = \begin{pmatrix} 1 & 0 & 0 & 0 \\ 0 & 0 & i & 0 \\ 0 & i & 0 & 0 \\ 0 & 0 & 0 & 1 \end{pmatrix}$, compute its canonical coordinates $(c_1, c_2, c_3)$ in the Weyl chamber.
+    \item \textbf{Makhlin Invariants Evaluation.} Calculate the local invariants $g_1, g_2, g_3$ for the $B$-gate with coordinates $(\pi/4, \pi/8, 0)$ and confirm they match Table~\ref{tab:weyl_coordinates_cost}.
+    \item \textbf{Cat-Entangler Scaling.} Compare the total EPR consumption and latency between sequential EJPP CNOTs and a binary Cat-entangler tree for broadcasting 1 control qubit to 8 target QPUs.
+    \item \textbf{Gottesman-Chuang Gate Teleportation.} Prove that teleporting a gate $U$ using the resource state $\ket{\chi_U} = (I \otimes U)\ket{\Phi^+}$ requires $U$ to belong to the Clifford group for deterministic Pauli feedforward corrections.
+    \item \textbf{Non-Local Toffoli Synthesis.} Derive the minimum EPR pair cost to implement a 3-qubit Toffoli gate where control 1 is on QPU $A$, control 2 is on QPU $B$, and target is on QPU $C$.
+    \item \textbf{Distributed SWAP Gate.} Explain why executing a remote SWAP between two QPUs requires 2 EPR pairs (teleporting both qubits) or 3 remote CNOTs, and identify which schedule achieves minimal circuit latency.
+    \item \textbf{Fidelity Degradation in KAK Synthesis.} If an EPR pair has fidelity $F_{\text{EPR}} = 0.94$, calculate the synthesized gate fidelity of an arbitrary interior $\text{SU}(4)$ unitary requiring 3 ebits, assuming local gates are error-free.
+\end{enumerate}

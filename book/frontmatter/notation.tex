@@ -1,0 +1,70 @@
+\chapter*{List of Symbols and Mathematical Notation}
+\addcontentsline{toc}{chapter}{List of Symbols and Mathematical Notation}
+
+\markboth{List of Symbols and Mathematical Notation}{List of Symbols and Mathematical Notation}
+
+\section*{Linear Algebra and Quantum State Notation}
+
+\begin{tabularx}{\textwidth}{lX}
+    \toprule
+    \textbf{Symbol} & \textbf{Description and Mathematical Definition} \\
+    \midrule
+    $\mathcal{H}$ & Complex Hilbert space of quantum statevectors ($\mathcal{H} \cong \mathbb{C}^{2^n}$ for $n$ qubits) \\
+    $\ket{\psi}$ & Dirac ket representing a pure quantum statevector ($\|\ket{\psi}\| = 1$) \\
+    $\bra{\psi}$ & Dirac bra representing the Hermitian conjugate dual vector ($\bra{\psi} = \ket{\psi}^\dagger$) \\
+    $\braket{\phi|\psi}$ & Complex inner product between statevectors $\ket{\phi}$ and $\ket{\psi}$ \\
+    $\ket{\psi}\bra{\phi}$ & Outer product operator projecting onto state subspace \\
+    $\rho$ & Density operator representing a pure or mixed quantum state ($\rho \ge 0$, $\text{Tr}(\rho) = 1$) \\
+    $\mathbb{I}_d$ & Identity operator of dimension $d \times d$ ($\mathbb{I}_2 = \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix}$) \\
+    $\sigma_x, \sigma_y, \sigma_z$ & Pauli spin matrices ($X, Y, Z$) \\
+    $\ket{\Phi^\pm}, \ket{\Psi^\pm}$ & The four canonical two-qubit Bell basis states \\
+    $\ket{\Phi^+}$ & Canonical maximally entangled EPR Bell pair: $\frac{1}{\sqrt{2}}(\ket{00} + \ket{11})$ \\
+    $\rho^{T_B}$ & Partial transpose of bipartite density matrix $\rho$ with respect to subsystem $B$ \\
+    $\mathcal{F}(\rho, \sigma)$ & Quantum state fidelity: $(\text{Tr}\sqrt{\sqrt{\rho}\sigma\sqrt{\rho}})^2$ (or $\bra{\psi}\rho\ket{\psi}$ for pure states) \\
+    $\mathcal{C}(\rho)$ & Concurrence of a bipartite two-qubit state $\rho$ \\
+    $E_N(\rho)$ & Logarithmic negativity: $\log_2 \|\rho^{T_B}\|_1$ \\
+    $\text{Tr}_B(\rho_{AB})$ & Partial trace over subsystem $B$, yielding reduced state $\rho_A$ \\
+    $U \in \text{SU}(2^n)$ & Special unitary transformation operator ($U^\dagger U = \mathbb{I}$, $\det(U) = 1$) \\
+    \bottomrule
+\end{tabularx}
+
+\section*{Quantum Noise and Physical Interconnect Parameters}
+
+\begin{tabularx}{\textwidth}{lX}
+    \toprule
+    \textbf{Parameter} & \textbf{Physical Meaning and Units} \\
+    \midrule
+    $T_1$ & Longitudinal energy relaxation time ($\mu\text{s}$ or $\text{ms}$) \\
+    $T_2$ & Transverse coherence time / total dephasing time ($\mu\text{s}$ or $\text{ms}$) \\
+    $T_2^*$ & Pure dephasing time without dynamical decoupling ($1/T_2 = 1/(2T_1) + 1/T_2^*$) \\
+    $T_2^{\text{DD}}$ & Extended coherence time under dynamical decoupling pulse sequences \\
+    $\tau_{1Q}, \tau_{2Q}$ & Single-qubit and local two-qubit physical gate durations ($\text{ns}$) \\
+    $\tau_{\text{meas}}$ & Dispersive readout / single-photon detector integration time ($\text{ns}$) \\
+    $\tau_{\text{epr}}$ & Average generation and herald latency for an entangled EPR pair ($\mu\text{s}$) \\
+    $\tau_{\text{class}}$ & Classical inter-cryostat communication latency ($L/v \approx 5\text{ ns/m}$) \\
+    $F_0$ & Initial raw fidelity of a generated EPR pair prior to purification \\
+    $\rho_W(F)$ & Isotropic two-qubit Werner state with fidelity $F$ \\
+    $L_{\text{att}}$ & Optical or coaxial cable attenuation length ($\text{km}$ or $\text{m}$) \\
+    $\kappa$ & Quasi-probability $L_1$-norm in circuit cutting decompositions \\
+    \bottomrule
+\end{tabularx}
+
+\section*{Graph Partitioning and Compiler Optimization Symbols}
+
+\begin{tabularx}{\textwidth}{lX}
+    \toprule
+    \textbf{Notation} & \textbf{Compiler / Graph Optimization Meaning} \\
+    \midrule
+    $Q = \{q_0, \dots, q_{n-1}\}$ & Set of $n$ logical qubits in the monolithic circuit \\
+    $\mathcal{G}$ & Time-ordered sequence of quantum gate operations in the circuit \\
+    $\mathcal{P} = \{P_1, \dots, P_M\}$ & Cluster of $M$ discrete Quantum Processing Units (QPUs) \\
+    $C_m$ & Physical qubit capacity of QPU $P_m$ \\
+    $\pi: Q \to \{1, \dots, M\}$ & Qubit placement mapping assigning logical qubits to QPUs \\
+    $\mathcal{H} = (\mathcal{V}, \mathcal{E})$ & Circuit interaction hypergraph with vertices $\mathcal{V}$ and hyperedges $\mathcal{E}$ \\
+    $w(e)$ & Hyperedge weight corresponding to communication / EPR consumption cost \\
+    $\lambda(e)$ & Number of distinct QPUs spanned by hyperedge $e$ \\
+    $\Phi(\pi)$ & Global communication cut objective functional (e.g., $(\lambda-1)$ metric) \\
+    $\mathcal{S}(u)$ & Scheduling slack of operation $u$: $t_{\text{ALAP}}(u) - t_{\text{ASAP}}(u)$ \\
+    $\mathcal{P}_{\text{crit}}$ & Critical path of the dependency DAG ($\mathcal{S}(u) = 0$) \\
+    \bottomrule
+\end{tabularx}

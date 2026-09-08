@@ -5,41 +5,77 @@
 \textit{``In classical compilers, scheduling optimizes for throughput and instruction-level parallelism. In distributed quantum compilers, scheduling is a matter of life or death against exponential decoherence.''}
 \end{quote}
 
-Quantum information is transient. Unlike classical registers that persist indefinitely in SRAM or DRAM, physical qubits continually decay toward their thermal ground state through energy relaxation ($T_1$) and lose quantum phase coherence through environmental fluctuations ($T_2^*$). When an algorithm is partitioned across multiple Quantum Processing Units, inter-QPU communication introduces macroscopic latencies:
-\begin{itemize}
-    \item EPR generation and distribution latency ($\tau_{\text{epr}} \approx 1\text{--}5\,\mu\text{s}$),
-    \item Single-photon or microwave detector integration times ($\tau_{\text{meas}} \approx 300\text{--}800\text{ ns}$), and
-    \item Inter-refrigerator classical signaling propagation ($\tau_{\text{class}} = L/v \approx 10\text{--}100\text{ ns}$).
-\end{itemize}
+% ======================================================================
+% OPENING NARRATIVE
+% ======================================================================
+\section*{Chapter Overview: The Race Against Quantum Entropy}
 
-If a compiler schedules quantum operations naively, qubits on receiving QPUs will sit idle in quantum memory buffers while waiting for communication transactions to complete. Within tens of microseconds, phase coherence decays past the classical advantage threshold, destroying computational fidelity.
+In classical computing, data in registers or caches is static and stable. If an instruction in your C++ program has a memory stall waiting for data from main memory, the CPU simply pauses or switches hardware threads. The values in registers \texttt{rax} and \texttt{rbx} will not evaporate; a logical $1$ will remain a $1$ for hours.
 
-This chapter presents the mathematical theory and algorithms behind **Coherence-Aware DAG Scheduling**. We formalize critical-path analysis, establish Just-In-Time (JIT) entanglement allocation, analyze classical latency hiding, and detail the automated synthesis of Dynamical Decoupling (DD) sequences to preserve quantum state integrity during unavoidable communication delays.
+In quantum computing, \textbf{time is an active enemy}. 
+
+The moment a quantum state $\ket{\psi} = \alpha\ket{0} + \beta\ket{1}$ is initialized, it is subjected to relentless thermodynamic coupling with its environment. Physical qubits continuously lose energy to the substrate through longitudinal relaxation ($T_1$) and lose phase alignment through transverse dephasing ($T_2^*$). When an algorithm is distributed across multiple discrete Quantum Processing Units (QPUs), inter-chip operations introduce massive time delays:
+\begin{enumerate}
+    \item \textbf{EPR Generation Latency ($\tau_{\text{epr}} \approx 1\text{--}10\,\mu\text{s}$):} Optical and microwave entanglement generation is rate-limited and often probabilistic.
+    \item \textbf{Dispersive Readout Latency ($\tau_{\text{meas}} \approx 300\text{--}800\text{ ns}$):} Measuring an ancilla qubit requires resonator ring-up and demodulation.
+    \item \textbf{Classical Inter-Cryostat Transit ($\tau_{\text{class}} \approx 10\text{--}100\text{ ns}$):} Sending classical measurement bits between refrigerators via fiber links.
+\end{enumerate}
+
+If a distributed compiler schedules gates naively---for instance, generating an EPR pair early and letting it sit in a quantum memory buffer for $40\,\mu\text{s}$ while other gates finish---the entangled state degrades below the $F = 2/3$ classical boundary, destroying circuit fidelity.
+
+In this chapter, we develop the mathematics and algorithms of \textbf{Coherence-Aware DAG Scheduling}. We formalize the Lindblad master equation for multi-QPU idle decoherence, establish the exact Mixed-Integer Linear Programming (MILP) formulation for Multi-QPU Resource-Constrained Quantum Project Scheduling (RCQPSP), formulate the Critical Path Method (CPM) with Slack analysis for distributed quantum circuits, prove the mathematical superiority of Just-In-Time (JIT) entanglement allocation over eager scheduling, and derive the filter function formalism for automated \keyterm{Dynamical Decoupling (DD)} synthesis.
 
 % ==============================================================================
-\section{Temporal Modeling of Distributed Quantum Circuits}
-\label{sec:temporal_modeling}
+\section{Open Quantum System Dynamics and Lindblad Decoherence}
+\label{sec:lindblad_decoherence}
 % ==============================================================================
 
-To schedule a distributed circuit, the compiler transforms the intermediate representation into a **Weighted Directed Acyclic Graph (DAG)** $\mathcal{G}_{\text{DAG}} = (\mathcal{V}_{\text{ops}}, \mathcal{E}_{\text{dep}})$.
+During idle periods between gates, a matter qubit interacting with a thermal Markovian bath undergoes environmental decoherence described by the \textbf{Lindblad Master Equation}:
+\begin{equation}
+    \frac{d\rho}{dt} = -\frac{i}{\hbar}[\hat{\mathcal{H}}_0, \rho] + \sum_{k} \gamma_k \left( \hat{L}_k \rho \hat{L}_k^\dagger - \frac{1}{2} \{ \hat{L}_k^\dagger \hat{L}_k, \rho \} \right),
+    \label{eq:lindblad_master_ch09}
+\end{equation}
+where $\hat{\mathcal{H}}_0 = \frac{\hbar \omega_q}{2} \hat{\sigma}_z$ is the unperturbed qubit Hamiltonian, and the jump operators $\hat{L}_k$ model distinct physical noise channels:
 
-\subsection{Vertex and Edge Semantics in the Scheduling DAG}
-\begin{itemize}
-    \item \textbf{Vertices ($u \in \mathcal{V}_{\text{ops}}$):} Represent individual quantum gates, measurements, EPR generation requests, or classical synchronization barriers. Each vertex has an execution duration $\tau(u)$ determined by the target hardware calibrated gate times (Table~\ref{tab:hardware_latencies}).
-    \item \textbf{Edges ($(u, v) \in \mathcal{E}_{\text{dep}}$):} Represent causal dependencies arising from:
-    \begin{enumerate}
-        \item \textit{Quantum Data Dependencies:} Gate $v$ acts on a qubit register produced by gate $u$.
-        \item \textit{Entanglement Dependencies:} A non-local telegate $v$ requires the completion of an EPR allocation operation $u$.
-        \item \textit{Classical Feedforward Dependencies:} A Pauli fix-up gate $v$ requires measurement outcome bits emitted by measurement $u$.
-    \end{enumerate}
-\end{itemize}
+\begin{enumerate}
+    \item \textbf{Longitudinal Amplitude Damping ($T_1$):} Jump operator $\hat{L}_1 = \hat{\sigma}_- = \ket{0}\bra{1}$ with decay rate $\gamma_1 = 1/T_1$, representing energy loss to dielectric substrate defects:
+    \begin{equation}
+        \rho_{11}(t) = \rho_{11}(0) e^{-t/T_1}, \qquad \rho_{00}(t) = 1 - \rho_{11}(t).
+    \end{equation}
+    
+    \item \textbf{Pure Phase Damping ($T_\phi$):} Jump operator $\hat{L}_2 = \hat{\sigma}_z$ with dephasing rate $\gamma_\phi = 1/T_\phi$, representing $1/f$ magnetic flux fluctuations:
+    \begin{equation}
+        \frac{1}{T_2} = \frac{1}{2T_1} + \frac{1}{T_\phi}.
+    \end{equation}
+    
+    \item \textbf{Transverse Coherence Decay ($T_2^*$):} Under combined relaxation and dephasing, off-diagonal density matrix elements decay as:
+    \begin{equation}
+        \rho_{01}(t) = \rho_{01}(0) \exp\left( - \frac{t}{T_2^*} - i \omega_q t \right).
+        \label{eq:t2_decay_formula_ch09}
+    \end{equation}
+\end{enumerate}
+
+\subsection{Analytical Solution of the 2-Qubit Idle Master Equation}
+For an entangled Bell state $\rho(0) = \ket{\Phi^+}\bra{\Phi^+}$ stored across two idle QPUs with dephasing times $T_{2, A}^*$ and $T_{2, B}^*$, the density matrix evolves under joint uncoupled Lindblad channels as:
+\begin{equation}
+    \rho(t) = \begin{pmatrix}
+        \frac{1 + e^{-t/T_{1,A}}}{2}\frac{1 + e^{-t/T_{1,B}}}{2} & 0 & 0 & \frac{1}{2} e^{-t/T_{2,A}^*} e^{-t/T_{2,B}^*} \\
+        0 & \frac{1 + e^{-t/T_{1,A}}}{2}\frac{1 - e^{-t/T_{1,B}}}{2} & 0 & 0 \\
+        0 & 0 & \frac{1 - e^{-t/T_{1,A}}}{2}\frac{1 + e^{-t/T_{1,B}}}{2} & 0 \\
+        \frac{1}{2} e^{-t/T_{2,A}^*} e^{-t/T_{2,B}^*} & 0 & 0 & \frac{1 - e^{-t/T_{1,A}}}{2}\frac{1 - e^{-t/T_{1,B}}}{2}
+    \end{pmatrix}.
+\end{equation}
+The instantaneous Werner state fidelity $F(t) = \bra{\Phi^+}\rho(t)\ket{\Phi^+}$ decays as:
+\begin{equation}
+    F(t) = \frac{1}{4} + \frac{1}{4} e^{-t/T_{1,A}} e^{-t/T_{1,B}} + \frac{1}{2} e^{-t/T_{2,A}^*} e^{-t/T_{2,B}^*}.
+    \label{eq:bell_decay_exact_ch09}
+\end{equation}
 
 \begin{table}[htbp]
     \centering
-    \small
     \caption{Empirical Hardware Gate Latencies and Coherence Limits in Superconducting Architectures}
-    \label{tab:hardware_latencies}
-    \begin{tabularx}{\textwidth}{llcc}
+    \label{tab:hardware_latencies_ch09}
+    \begin{tabularx}{\textwidth}{X X c c}
         \toprule
         \textbf{Operation / Metric} & \textbf{Physical Mechanism} & \textbf{Typical Duration ($\tau$)} & \textbf{Error Rate ($\epsilon$)} \\
         \midrule
@@ -56,144 +92,298 @@ To schedule a distributed circuit, the compiler transforms the intermediate repr
 \end{table}
 
 % ==============================================================================
-\section{ASAP vs. ALAP Scheduling and the Slack Metric}
+\section{Resource-Constrained Quantum Scheduling (RCQPSP)}
+\label{sec:rcqpsp_formulation}
+% ==============================================================================
+
+The Resource-Constrained Quantum Project Scheduling Problem (RCQPSP) formalizes the simultaneous allocation of hardware drive lines, measurement resonators, and optical interconnects.
+
+\subsection{Mixed-Integer Linear Programming (MILP) Formulation}
+Let $\mathcal{V} = \{1, 2, \dots, N\}$ denote the set of quantum operations to be scheduled. Each operation $i \in \mathcal{V}$ has a fixed duration $\tau_i \ge 0$ and requires a set of physical resources $R_i \subset \mathcal{R}_{\text{hw}}$ (e.g., specific transmon drive ports, microwave couplers, or inter-QPU optical links).
+
+Let $s_i \ge 0$ be the continuous decision variable representing the start time of operation $i$. To resolve resource contention without overlapping executions on the same physical link or qubit, we introduce binary sequencing variables $y_{ij} \in \{0, 1\}$ for every pair of operations $(i, j)$ sharing a common hardware resource ($R_i \cap R_j \neq \emptyset$), where $y_{ij} = 1$ if $i$ precedes $j$, and $y_{ij} = 0$ if $j$ precedes $i$.
+
+The complete MILP formulation is:
+\begin{align}
+    \min_{s, y, T_{\text{makespan}}} \quad & \alpha \cdot T_{\text{makespan}} + \beta \sum_{q \in \mathcal{Q}} \sum_{k=1}^{n_q - 1} \frac{s_{\pi_q(k+1)} - (s_{\pi_q(k)} + \tau_{\pi_q(k)})}{T_2^*(q)} \label{eq:milp_objective} \\
+    \text{subject to} \quad & s_v - s_u \ge \tau_u, \quad \forall (u, v) \in \mathcal{E}_{\text{dep}} \label{eq:milp_precedence} \\
+    & s_j \ge s_i + \tau_i - M (1 - y_{ij}), \quad \forall (i, j) \text{ with } R_i \cap R_j \neq \emptyset \label{eq:milp_disjunctive_1} \\
+    & s_i \ge s_j + \tau_j - M y_{ij}, \quad \forall (i, j) \text{ with } R_i \cap R_j \neq \emptyset \label{eq:milp_disjunctive_2} \\
+    & T_{\text{makespan}} \ge s_u + \tau_u, \quad \forall u \in \mathcal{V} \label{eq:milp_makespan} \\
+    & s_i \ge 0, \quad y_{ij} \in \{0, 1\},
+\end{align}
+where $\pi_q(k)$ denotes the $k$-th operation executed on qubit $q$, $M$ is a sufficiently large positive constant (e.g., $M = \sum_{u} \tau_u$), and $\alpha, \beta > 0$ are tuning weights balancing total circuit makespan against idle dephasing penalty.
+
+% ==============================================================================
+\section{Critical Path Method (CPM) and Slack Analysis}
 \label{sec:asap_alap}
 % ==============================================================================
 
-Traditional compilers schedule instructions using either **As-Soon-As-Possible (ASAP)** or **As-Late-As-Possible (ALAP)** traversals:
-\begin{align}
-    t_{\text{ASAP}}(v) &= \max_{(u, v) \in \mathcal{E}} \left( t_{\text{ASAP}}(u) + \tau(u) \right), \\
-    t_{\text{ALAP}}(u) &= \min_{(u, v) \in \mathcal{E}} \left( t_{\text{ALAP}}(v) - \tau(u) \right).
-\end{align}
+The compiler traverses the scheduling DAG in two directions to compute time boundaries for every operation:
 
-The operational difference between these two timestamps defines the **Scheduling Slack** $\mathcal{S}(u)$:
+\subsection{Forward and Backward DAG Traversals}
+\begin{enumerate}
+    \item \textbf{As-Soon-As-Possible (ASAP) Early Start Time:}
+    \begin{equation}
+        t_{\text{ASAP}}(v) = \max_{(u, v) \in \mathcal{E}} \left( t_{\text{ASAP}}(u) + \tau(u) \right), \qquad t_{\text{ASAP}}(\text{source}) = 0.
+        \label{eq:asap_traversal_ch9_v2}
+    \end{equation}
+    
+    \item \textbf{As-Late-As-Possible (ALAP) Late Start Time:}
+    Let $T_{\text{makespan}} = \max_{v} (t_{\text{ASAP}}(v) + \tau(v))$ be the total circuit makespan.
+    \begin{equation}
+        t_{\text{ALAP}}(u) = \min_{(u, v) \in \mathcal{E}} \left( t_{\text{ALAP}}(v) - \tau(u) \right), \qquad t_{\text{ALAP}}(\text{sink}) = T_{\text{makespan}} - \tau(\text{sink}).
+        \label{eq:alap_traversal_ch9_v2}
+    \end{equation}
+\end{enumerate}
+
+\subsection{Scheduling Slack: Total, Free, and Interfering Float}
+The difference between these bounds defines the \textbf{Total Float (Slack)} $\mathcal{S}_{\text{total}}(u)$:
 \begin{equation}
-    \mathcal{S}(u) = t_{\text{ALAP}}(u) - t_{\text{ASAP}}(u).
-    \label{eq:slack_definition}
+    \mathcal{S}_{\text{total}}(u) = t_{\text{ALAP}}(u) - t_{\text{ASAP}}(u) \ge 0.
+    \label{eq:slack_definition_ch9_v2}
 \end{equation}
-Operations with zero slack ($\mathcal{S}(u) = 0$) reside on the **Critical Path** of the distributed program. Any delay in executing a critical-path operation extends the overall execution latency of the multi-QPU machine.
 
-\subsection{The Eager Allocation Hazard in Distributed Systems}
-In classical compilers, executing operations ASAP is universally preferred because it maximizes execution throughput. In distributed quantum compilers, however, eager ASAP allocation of entangled states is fatal.
+Furthermore, the compiler computes:
+\begin{itemize}
+    \item \textbf{Free Float ($FF_u$):} The delay $u$ can experience without delaying the early start of \textit{any} successor:
+    \begin{equation}
+        FF_u = \min_{(u, v) \in \mathcal{E}} t_{\text{ASAP}}(v) - t_{\text{ASAP}}(u) - \tau(u).
+    \end{equation}
+    \item \textbf{Interfering Float ($IF_u$):} The portion of total float that, if consumed, reduces the float of downstream operations:
+    \begin{equation}
+        IF_u = \mathcal{S}_{\text{total}}(u) - FF_u.
+    \end{equation}
+\end{itemize}
 
-\begin{figure}[htbp]
-    \centering
-    \begin{tikzpicture}[scale=0.9, >=stealth]
-        % ASAP Schedule (Hazardous)
-        \node[font=\bfseries\color{red!80!black}] at (-3.5, 3.5) {(a) ASAP Eager Scheduling (Hazardous)};
-        % Timeline axes
-        \draw[->, line width=1pt] (-7, 2.5) -- (0.5, 2.5) node[right, font=\tiny] {Time};
-        % QPU 0
-        \node[font=\tiny] at (-7.5, 2.0) {QPU 0};
-        \draw[fill=blue!20] (-6.8, 1.8) rectangle (-4.5, 2.2) node[midway, font=\tiny] {Local 2Q Gates};
-        \draw[fill=purple!20] (-4.2, 1.8) rectangle (-2.5, 2.2) node[midway, font=\tiny] {Telegate CX};
-        % QPU 1
-        \node[font=\tiny] at (-7.5, 1.0) {QPU 1};
-        \draw[fill=green!20, draw=compilerteal] (-6.8, 0.8) rectangle (-5.0, 1.2) node[midway, font=\tiny] {EPR Gen};
-        % Idle decay region
-        \draw[pattern=north east lines, pattern color=red!60, draw=red] (-5.0, 0.8) rectangle (-4.2, 1.2);
-        \node[font=\tiny\color{red!80!black}, below] at (-4.6, 0.8) {Idle Buffer ($F \to 0.5$)};
-        \draw[fill=purple!20] (-4.2, 0.8) rectangle (-2.5, 1.2) node[midway, font=\tiny] {Telegate CX};
-
-        % JIT Schedule (Optimal)
-        \node[font=\bfseries\color{compilerteal}] at (4.5, 3.5) {(b) Just-In-Time (JIT) Scheduling (Optimal)};
-        % Timeline axes
-        \draw[->, line width=1pt] (1, 2.5) -- (8.5, 2.5) node[right, font=\tiny] {Time};
-        % QPU 0
-        \node[font=\tiny] at (0.5, 2.0) {QPU 0};
-        \draw[fill=blue!20] (1.2, 1.8) rectangle (3.5, 2.2) node[midway, font=\tiny] {Local 2Q Gates};
-        \draw[fill=purple!20] (3.8, 1.8) rectangle (5.5, 2.2) node[midway, font=\tiny] {Telegate CX};
-        % QPU 1
-        \node[font=\tiny] at (0.5, 1.0) {QPU 1};
-        % Delayed EPR Gen
-        \draw[fill=green!20, draw=compilerteal] (2.0, 0.8) rectangle (3.8, 1.2) node[midway, font=\tiny] {Delayed EPR Gen};
-        \draw[fill=purple!20] (3.8, 0.8) rectangle (5.5, 1.2) node[midway, font=\tiny] {Telegate CX};
-        
-        \draw[<->, line width=1pt, color=compilerteal] (3.8, 0.5) -- (3.8, 2.5);
-        \node[font=\tiny\color{compilerteal}, below] at (3.8, 0.4) {Zero Buffer Idle Time!};
-    \end{tikzpicture}
-    \caption{Comparison of distributed scheduling policies. (a) Eager ASAP scheduling generates the EPR pair early, forcing it to sit in a lossy buffer while QPU 0 completes unrelated gates, degrading fidelity. (b) JIT scheduling delays EPR generation so that the entangled pair arrives exactly at the instant of telegate execution.}
-    \label{fig:jit_scheduling_comparison}
-\end{figure}
-
-As illustrated in Figure~\ref{fig:jit_scheduling_comparison}, if an EPR pair is allocated eagerly at $t=0$, but its consuming non-local CNOT cannot execute until $t = 30\,\mu\text{s}$ due to upstream dependencies on QPU 0, the communication ancillae experience $30\,\mu\text{s}$ of pure dephasing. The DQC scheduling pass resolves this by applying **Just-In-Time (JIT) Entanglement Scheduling**.
-
-\begin{definitionbox}{Just-In-Time (JIT) Scheduling Rule}
-For every non-local gate operation $g_{\text{tele}}$ with earliest execution timestamp $t_{\text{exec}}(g_{\text{tele}})$, its corresponding entanglement generation operation $\text{alloc\_epr}$ must be scheduled at timestamp:
+\begin{definitionbox}{Critical Path}
+The critical path $\mathcal{P}_{\text{crit}} \subseteq \mathcal{V}_{\text{ops}} $ is the set of all operations with zero scheduling slack:
 \begin{equation}
-    t_{\text{sched}}(\text{alloc\_epr}) = t_{\text{exec}}(g_{\text{tele}}) - \tau_{\text{epr}},
-    \label{eq:jit_rule}
+    \mathcal{P}_{\text{crit}} = \{ u \in \mathcal{V}_{\text{ops}} \mid \mathcal{S}_{\text{total}}(u) = 0 \}.
 \end{equation}
-guaranteeing that the EPR pair arrives at the communication ancillae exactly as the target gate becomes ready, minimizing buffer residence time $\Delta t_{\text{buffer}} \to 0$.
 \end{definitionbox}
 
 % ==============================================================================
-\section{Classical-Quantum Latency Hiding}
-\label{sec:latency_hiding}
+\section{Just-In-Time (JIT) Entanglement Allocation vs. Eager Scheduling}
+\label{sec:jit_scheduling}
 % ==============================================================================
 
-In the Eisert non-local gate protocol (Chapter~\ref{ch:nonlocal_gate_synthesis}), QPU $A$ measures ancilla $e_A$ and must transmit classical bit $m_1$ across the inter-refrigerator network to QPU $B$ to trigger the Pauli correction $\sigma_x^{m_1}$. 
-
-During the classical transit time $\tau_{\text{class}} \approx 50\text{ ns}$ and classical packet handling latency, QPU $B$'s target qubit $q_t$ would ordinarily stall. The DQC scheduling pass performs **Latency Hiding**:
-\begin{enumerate}
-    \item The compiler inspects the dependency DAG for independent local single-qubit gates or Clifford operations on other qubits belonging to QPU $B$.
-    \item These operations are interleaved into the classical communication window $[\,t_{\text{meas}}, \, t_{\text{meas}} + \tau_{\text{class}} + \tau_{\text{rx}}\,]$.
-    \item When the classical bit arrives at the FPGA controller, the pending Pauli correction is applied immediately with zero processor stall time.
-\end{enumerate}
-
-% ==============================================================================
-\section{Dynamical Decoupling (DD) Synthesis}
-\label{sec:dynamical_decoupling}
-% ==============================================================================
-
-When algorithm dependencies make idle waiting times unavoidable (slack $\mathcal{S}(q) > 0$), the compiler protects inactive data qubits and communication buffers by synthesizing **Dynamical Decoupling (DD)** sequences.
-
-\subsection{Pulse Sequence Mechanics}
-Rather than leaving an idle qubit in a static state where low-frequency environmental magnetic noise accumulates phase errors $\Delta \phi = \int_0^t \delta \omega(t') dt'$, the compiler inserts periodic $\pi$-pulse rotations that dynamically invert the qubit state, averaging phase accumulation to zero.
+When should the compiler emit the \texttt{dqc.prepare\_epr} instruction to generate an EPR pair across a physical link?
 
 \begin{figure}[htbp]
     \centering
     \begin{tikzpicture}[scale=0.9, >=stealth]
-        % Qubit wire
-        \draw[line width=1pt] (-5, 0) node[left, font=\small] {$q_{\text{idle}}$} -- (5, 0);
+        % Eager Scheduling (Top)
+        \node[font=\bfseries\color{cautionred}, anchor=west] at (-5, 2.5) {(a) Eager Scheduling: Fatal Buffer Decoherence};
+        \draw[line width=1.2pt] (-5, 1.8) -- (5, 1.8);
+        \filldraw[fill=cautionred!20, draw=cautionred, line width=1pt] (-4.5, 1.3) rectangle (-2.5, 2.3);
+        \node[font=\tiny\bfseries, align=center] at (-3.5, 1.8) {EPR Alloc\\(Early)};
         
-        % Idle interval delimiter
-        \draw[dashed, color=gray] (-4, -1) -- (-4, 1.2) node[above, font=\tiny] {$t_{\text{start}}$};
-        \draw[dashed, color=gray] (4, -1) -- (4, 1.2) node[above, font=\tiny] {$t_{\text{end}}$ (Gate Ready)};
+        \filldraw[fill=yellow!30, draw=orange, line width=1pt, dashed] (-2.5, 1.3) rectangle (2.5, 2.3);
+        \node[font=\tiny\bfseries\color{red!80!black}, align=center] at (0, 1.8) {IDLE BUFFER DECAY\\$\Delta t = 40\,\mu\text{s} \implies F \to 0.51$ (DESTROYED!)};
         
-        % XY4 Sequence Pulses
-        % Pulse 1: X_pi
-        \draw[fill=compilerteal!30, draw=compilerteal, line width=0.8pt] (-2.8, -0.4) rectangle (-2.2, 0.4);
-        \node[font=\tiny\bfseries] at (-2.5, 0) {$X_\pi$};
+        \filldraw[fill=compilerteal!20, draw=compilerteal, line width=1pt] (2.5, 1.3) rectangle (4.5, 2.3);
+        \node[font=\tiny\bfseries, align=center] at (3.5, 1.8) {Telegate\\Execute};
         
-        % Pulse 2: Y_pi
-        \draw[fill=quantumviolet!30, draw=quantumviolet, line width=0.8pt] (-1.3, -0.4) rectangle (-0.7, 0.4);
-        \node[font=\tiny\bfseries] at (-1.0, 0) {$Y_\pi$};
+        % JIT Scheduling (Bottom)
+        \node[font=\bfseries\color{compilerteal}, anchor=west] at (-5, -0.2) {(b) Just-In-Time (JIT) Scheduling: Maximum Fidelity};
+        \draw[line width=1.2pt] (-5, -0.9) -- (5, -0.9);
         
-        % Pulse 3: X_pi
-        \draw[fill=compilerteal!30, draw=compilerteal, line width=0.8pt] (0.7, -0.4) rectangle (1.3, 0.4);
-        \node[font=\tiny\bfseries] at (1.0, 0) {$X_\pi$};
+        \filldraw[fill=gray!15, draw=gray, line width=1pt] (-4.5, -1.4) rectangle (0.5, -0.4);
+        \node[font=\tiny\bfseries\color{gray}, align=center] at (-2.0, -0.9) {Qubit Free for Local Computation / Idling};
         
-        % Pulse 4: Y_pi
-        \draw[fill=quantumviolet!30, draw=quantumviolet, line width=0.8pt] (2.2, -0.4) rectangle (2.8, 0.4);
-        \node[font=\tiny\bfseries] at (2.5, 0) {$Y_\pi$};
+        \filldraw[fill=compilerteal!20, draw=compilerteal, line width=1pt] (0.5, -1.4) rectangle (2.5, -0.4);
+        \node[font=\tiny\bfseries, align=center] at (1.5, -0.9) {EPR Alloc\\(JIT)};
         
-        % Delays (tau)
-        \node[font=\tiny, below] at (-3.4, 0) {$\tau$};
-        \node[font=\tiny, below] at (-1.75, 0) {$2\tau$};
-        \node[font=\tiny, below] at (0, 0) {$2\tau$};
-        \node[font=\tiny, below] at (1.75, 0) {$2\tau$};
-        \node[font=\tiny, below] at (3.4, 0) {$\tau$};
+        \filldraw[fill=compilerteal!40, draw=compilerteal, line width=1.2pt] (2.5, -1.4) rectangle (4.5, -0.4);
+        \node[font=\tiny\bfseries, align=center] at (3.5, -0.9) {Telegate\\Execute};
+        
+        \node[font=\tiny\bfseries\color{compilerteal}, below] at (1.5, -1.5) {$\Delta t_{\text{buffer}} = 0\text{ ns} \implies F = 0.96$ (PRISTINE!)};
     \end{tikzpicture}
-    \caption{The XY4 Dynamical Decoupling sequence automatically inserted by Pass 4 during idle wait windows. Symmetric spacing of alternating $X_\pi$ and $Y_\pi$ pulses cancels both longitudinal and transverse dephasing components.}
-    \label{fig:xy4_sequence}
+    \caption{Comparison of entanglement scheduling policies. (a) Eager scheduling allocates EPR pairs as early as possible, causing fragile Bell states to decay in quantum memory buffers. (b) JIT scheduling uses ALAP backward scheduling to generate EPR pairs immediately before telegate consumption, preserving maximum quantum fidelity.}
+    \label{fig:jit_vs_eager_scheduling_ch09}
 \end{figure}
 
-The DQC compiler synthesizes the universal **XY4** sequence:
+\begin{theorembox}{The JIT Entanglement Fidelity Optimality Theorem}
+Let an EPR pair with initial Werner fidelity $F_0$ experience dephasing with characteristic time $T_2^*$. If a non-local gate executes at timestamp $t_{\text{gate}}$, scheduling EPR generation at $t_{\text{gen}} = t_{\text{gate}} - \tau_{\text{epr}}$ achieves the strictly maximal quantum state fidelity:
 \begin{equation}
-    \text{DD}_{\text{XY4}} = \tau - X_\pi - 2\tau - Y_\pi - 2\tau - X_\pi - 2\tau - Y_\pi - \tau,
-    \label{eq:xy4_formula}
+    F_{\text{JIT}} = \frac{1}{4} + \frac{3}{4} \left( \frac{4F_0 - 1}{3} \right) \cdot 1 = F_0,
 \end{equation}
-where $\tau$ is chosen to match the total idle duration $\Delta t_{\text{idle}} = 8\tau + 4\tau_\pi$. By alternating between $X$ and $Y$ bases, the sequence corrects arbitrary direction phase and bit-flip errors caused by anisotropic environmental coupling, boosting effective coherence time from $T_2^* \approx 60\,\mu\text{s}$ to $T_2^{\text{DD}} \ge 350\,\mu\text{s}$.
+whereas eager generation at $t_{\text{eager}} = 0$ yields degraded fidelity:
+\begin{equation}
+    F_{\text{eager}} = \frac{1}{4} + \frac{3}{4} \left( \frac{4F_0 - 1}{3} \right) \exp\left( - \frac{t_{\text{gate}} - \tau_{\text{epr}}}{T_2^*} \right) < F_{\text{JIT}}.
+\end{equation}
+\end{theorembox}
 
-Through JIT allocation, classical latency hiding, and automated dynamical decoupling, Pass 4 ensures that physical distributed quantum hardware executes circuits with the highest possible surviving fidelity.
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.88, >=stealth]
+        % Timeline axis
+        \draw[->, line width=1pt] (0, 0) -- (12, 0) node[right, font=\footnotesize\bfseries] {Time ($\mu\text{s}$)};
+        \foreach \x in {0, 2, 4, 6, 8, 10} {
+            \draw (\x, 0.1) -- (\x, -0.1) node[below, font=\tiny] {\x};
+        }
+        
+        % QPU 0 Lane
+        \node[font=\footnotesize\bfseries\color{darkblue}] at (-1.2, 3.5) {QPU 0 ($q_0$)};
+        \draw[line width=0.8pt, color=gray!60] (0, 3.5) -- (11.5, 3.5);
+        \filldraw[fill=blue!20, draw=darkblue] (0.2, 3.2) rectangle (1.2, 3.8);
+        \node[font=\tiny\bfseries] at (0.7, 3.5) {H};
+        \filldraw[fill=compilerteal!30, draw=compilerteal] (4.0, 3.2) rectangle (6.0, 3.8);
+        \node[font=\tiny\bfseries] at (5.0, 3.5) {Local CX};
+        \filldraw[fill=red!20, draw=cautionred] (6.2, 3.2) rectangle (7.5, 3.8);
+        \node[font=\tiny\bfseries] at (6.85, 3.5) {$\mathcal{M}_Z$};
+        
+        % Optical Interconnect Lane
+        \node[font=\footnotesize\bfseries\color{quantumviolet}] at (-1.2, 2.0) {Optical Link};
+        \draw[line width=0.8pt, color=gray!60] (0, 2.0) -- (11.5, 2.0);
+        \filldraw[fill=quantumviolet!30, draw=quantumviolet, dashed] (2.0, 1.7) rectangle (4.0, 2.3);
+        \node[font=\tiny\bfseries] at (3.0, 2.0) {JIT EPR Pulse};
+        
+        % QPU 1 Lane
+        \node[font=\footnotesize\bfseries\color{darkblue}] at (-1.2, 0.8) {QPU 1 ($q_1$)};
+        \draw[line width=0.8pt, color=gray!60] (0, 0.8) -- (11.5, 0.8);
+        % XY4 sequence on QPU 1 during wait
+        \filldraw[fill=examplegreen!25, draw=examplegreen!80!black] (0.5, 0.5) rectangle (1.2, 1.1);
+        \node[font=\tiny] at (0.85, 0.8) {$X_\pi$};
+        \filldraw[fill=examplegreen!25, draw=examplegreen!80!black] (1.8, 0.5) rectangle (2.5, 1.1);
+        \node[font=\tiny] at (2.15, 0.8) {$Y_\pi$};
+        \filldraw[fill=compilerteal!30, draw=compilerteal] (4.0, 0.5) rectangle (6.0, 1.1);
+        \node[font=\tiny\bfseries] at (5.0, 0.8) {Local CX};
+        \filldraw[fill=yellow!30, draw=orange] (8.0, 0.5) rectangle (9.2, 1.1);
+        \node[font=\tiny\bfseries] at (8.6, 0.8) {Fixup $X^{m_1}$};
+        
+        % Classical signaling arrow
+        \draw[double, ->, line width=1pt, color=darkblue] (7.5, 3.5) -- (8.0, 3.5) -- (8.0, 1.1);
+        \node[font=\tiny\bfseries, right] at (8.0, 2.3) {$\tau_{\text{class}}$};
+    \end{tikzpicture}
+    \caption{Coherence-Aware Multi-QPU Execution Gantt Schedule. The optical link fires a JIT EPR pulse immediately before local CNOT execution ($t=4\,\mu\text{s}$). During idle wait periods ($t=0\text{--}3\,\mu\text{s}$), spectator qubits receive XY4 refocusing pulses.}
+    \label{fig:coherence_gantt_schedule_ch09}
+\end{figure}
+
+% ==============================================================================
+\section{Automated Dynamical Decoupling (DD) Synthesis}
+\label{sec:dynamical_decoupling}
+% ==============================================================================
+
+Even with JIT scheduling, spectator qubits waiting for network communication suffer dephasing. To combat low-frequency $1/f$ environmental noise, the DQC compiler automatically inserts \keyterm{Dynamical Decoupling (DD)} pulse sequences into idle scheduling gaps.
+
+\subsection{Average Hamiltonian Theory and Magnus Expansion}
+Under a periodic sequence of $\pi$-pulses applied at times $t_1, t_2, \dots, t_N$ across total duration $T$, the system evolves in the toggling interaction frame under Hamiltonian $\tilde{\mathcal{H}}(t) = U_{\text{ctrl}}^\dagger(t) \hat{\mathcal{H}}_{\text{bath}}(t) U_{\text{ctrl}}(t) = y(t) \beta(t) \hat{\sigma}_z$, where $y(t) \in \{+1, -1\}$ is the time-domain modulation function switching sign after each $\pi$-pulse.
+
+According to Average Hamiltonian Theory, the unitary evolution over period $T$ is $U(T) = \exp(-i \bar{\mathcal{H}} T / \hbar)$, where $\bar{\mathcal{H}}$ is expanded via the \textbf{Magnus series}:
+\begin{align}
+    \bar{\mathcal{H}}^{(0)} &= \frac{1}{T} \int_{0}^{T} \tilde{\mathcal{H}}(t) dt = \left( \frac{1}{T} \int_{0}^{T} y(t) \beta(t) dt \right) \hat{\sigma}_z, \label{eq:magnus_order_0} \\
+    \bar{\mathcal{H}}^{(1)} &= -\frac{i}{2 T \hbar} \int_{0}^{T} dt_2 \int_{0}^{t_2} dt_1 \left[ \tilde{\mathcal{H}}(t_2), \tilde{\mathcal{H}}(t_1) \right]. \label{eq:magnus_order_1}
+\end{align}
+For pure dephasing noise, $[\tilde{\mathcal{H}}(t_2), \tilde{\mathcal{H}}(t_1)] = 0$, meaning the second and higher-order commutators vanish identically. The residual dephasing error is governed entirely by the overlap between the modulation function $y(t)$ and the stochastic noise field $\beta(t)$.
+
+\subsection{Noise Filter Function Formalism}
+In the frequency domain, the dephasing decay factor $\chi(T)$ is expressed as:
+\begin{equation}
+    \chi(T) = \frac{1}{\pi} \int_{0}^{\infty} S(\omega) \frac{F(\omega T)}{\omega^2} d\omega,
+    \label{eq:filter_function_integral_ch09}
+\end{equation}
+where $S(\omega) = \frac{A}{\omega^\alpha}$ is the environmental noise spectral density ($1/f$ flux and charge noise), and $F(\omega T)$ is the sequence filter function:
+\begin{equation}
+    F(\omega T) = \left| 1 + (-1)^N e^{i \omega T} + 2 \sum_{j=1}^N (-1)^j e^{i \omega t_j} \right|^2.
+\end{equation}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.92, >=stealth]
+        % (a) CPMG-4 Equidistant Spacing
+        \node[font=\bfseries\color{darkblue}, anchor=west] at (-5.5, 2.6) {(a) CPMG-4: Uniform Pulse Spacing};
+        \draw[line width=1pt] (-5.5, 2.0) -- (5.5, 2.0);
+        \foreach \x in {-4.125, -1.375, 1.375, 4.125} {
+            \filldraw[fill=blue!30, draw=darkblue, line width=1pt] (\x-0.25, 1.6) rectangle (\x+0.25, 2.4);
+            \node[font=\tiny\bfseries] at (\x, 2.0) {$X_\pi$};
+        }
+        \node[font=\tiny, fill=white] at (-4.8, 1.2) {$\tau_d$};
+        \node[font=\tiny, fill=white] at (-2.75, 1.2) {$2\tau_d$};
+        \node[font=\tiny, fill=white] at (0, 1.2) {$2\tau_d$};
+        \node[font=\tiny, fill=white] at (2.75, 1.2) {$2\tau_d$};
+        \node[font=\tiny, fill=white] at (4.8, 1.2) {$\tau_d$};
+        
+        % (b) Uhrig UDD-4 Non-Equidistant Spacing
+        \node[font=\bfseries\color{quantumviolet}, anchor=west] at (-5.5, -0.2) {(b) Uhrig (UDD-4): $t_j = T \sin^2\left(\frac{j\pi}{2(N+1)}\right)$};
+        \draw[line width=1pt] (-5.5, -0.8) -- (5.5, -0.8);
+        % UDD-4 relative positions on [-5, 5] (total length 10):
+        % j=1: sin^2(pi/10) = 0.0955 -> -5 + 0.955 = -4.045
+        % j=2: sin^2(2pi/10) = 0.3455 -> -5 + 3.455 = -1.545
+        % j=3: sin^2(3pi/10) = 0.6545 -> -5 + 6.545 = 1.545
+        % j=4: sin^2(4pi/10) = 0.9045 -> -5 + 9.045 = 4.045
+        \foreach \x in {-4.045, -1.545, 1.545, 4.045} {
+            \filldraw[fill=purple!30, draw=quantumviolet, line width=1pt] (\x-0.25, -1.2) rectangle (\x+0.25, -0.4);
+            \node[font=\tiny\bfseries] at (\x, -0.8) {$X_\pi$};
+        }
+        \node[font=\tiny\bfseries\color{quantumviolet}, below] at (0, -1.4) {Cluster at Boundaries Suppresses High-Frequency Noise};
+    \end{tikzpicture}
+    \caption{Pulse spacing comparison between (a) standard uniform CPMG-4 and (b) non-uniform Uhrig Dynamical Decoupling (UDD-4). UDD clusters refocusing pulses closer to the boundaries of the idle interval, canceling higher-order derivatives of the noise field.}
+    \label{fig:udd_vs_cpmg_spacing_ch09}
+\end{figure}
+
+\subsection{Comparison of Dynamical Decoupling Protocols}
+The compiler selects from four family of refocusing sequences based on noise spectral characteristics:
+\begin{enumerate}
+    \item \textbf{CPMG ($N$-pulse):} $[ \tau_d - X_\pi - 2\tau_d - X_\pi - \dots - \tau_d ]$. High noise suppression along the $X$-axis, but vulnerable to pulse rotation angle errors.
+    \item \textbf{XY4:} $[ \tau_d - X_\pi - 2\tau_d - Y_\pi - 2\tau_d - X_\pi - 2\tau_d - Y_\pi - \tau_d ]$. Robust against both bit-flip and phase-flip noise with second-order error cancellation.
+    \item \textbf{UDD (Uhrig Dynamical Decoupling):} Optimized non-equidistant pulse timings $t_j = T \sin^2\left(\frac{j\pi}{2(N+1)}\right)$ for noise spectra with sharp high-frequency cut-offs $\omega_c$.
+    \item \textbf{KDD (Knill Dynamical Decoupling):} Replaces each $\pi$-pulse with a composite 5-pulse sequence $(X_{\pi/6})_{\pi/2} - (Y_\pi) - \dots$, achieving 4th-order robustness against control amplitude drift and pulse detuning errors.
+\end{enumerate}
+
+\begin{algorithmbox}{Coherence-Aware JIT Scheduler with XY4 Insertion}
+\textbf{Input:} Circuit DAG $\mathcal{G} = (\mathcal{V}, \mathcal{E})$, Hardware specs $(T_1, T_2^*, \tau_{\text{gate}}, \tau_{\text{epr}})$.\\
+\textbf{Output:} Scheduled instruction stream with inserted DD pulses.
+
+\begin{enumerate}[leftmargin=1.5em]
+    \item Compute $t_{\text{ASAP}}(v)$ for all $v \in \mathcal{V}$ via forward topological sort.
+    \item Compute makespan $T_{\max} = \max_v (t_{\text{ASAP}}(v) + \tau(v))$.
+    \item Compute $t_{\text{ALAP}}(v)$ for all $v \in \mathcal{V}$ via reverse topological sort.
+    \item \textbf{For each} EPR allocation operation $e \in \mathcal{V}_{\text{epr}}$ \textbf{do}:
+    \begin{itemize}
+        \item Schedule start time at late bound: $T_{\text{start}}(e) \leftarrow t_{\text{ALAP}}(e)$.
+    \end{itemize}
+    \item \textbf{For each} local operation $u \in \mathcal{V}_{\text{local}}$ \textbf{do}:
+    \begin{itemize}
+        \item Schedule start time: $T_{\text{start}}(u) \leftarrow t_{\text{ASAP}}(u)$.
+    \end{itemize}
+    \item \textbf{Idle Gap Identification:} For each qubit $q$, scan timeline for idle gaps $\Delta t_{\text{idle}} \ge 4 \tau_{\text{pulse}}$.
+    \item \textbf{XY4 Synthesis:} In each qualifying gap, insert symmetric $\text{XY4}(\Delta t_{\text{idle}})$ sequence.
+    \item \textbf{Return} Scheduled and decoupled timeline.
+\end{enumerate}
+\end{algorithmbox}
+
+% ==============================================================================
+% CHAPTER SUMMARY
+% ==============================================================================
+
+\begin{summarybox}{Key Invariants of Chapter 9}
+\begin{enumerate}
+    \item \textbf{Temporal Criticality:} Unmitigated idle latency destroys quantum states via exponential $T_2^*$ dephasing; compilers must minimize buffer dwell time.
+    \item \textbf{Exact MILP Scheduling:} The RCQPSP model integrates precedence, channel capacity, and Lindblad decay into a unified mathematical optimization framework.
+    \item \textbf{JIT Optimality:} Just-In-Time (JIT) entanglement scheduling is mathematically optimal, reducing Werner state decay to the absolute physical minimum.
+    \item \textbf{CPM Slack Exploitation:} Float analysis identifies non-critical operations, enabling latency hiding without expanding circuit makespan.
+    \item \textbf{Automated DD Refocusing:} Inserting XY4 and UDD pulse sequences into idle scheduling gaps suppresses $1/f$ environmental noise, extending coherence by up to $6\times$.
+\end{enumerate}
+\end{summarybox}
+
+% ==============================================================================
+% EXERCISES
+% ==============================================================================
+
+\section*{Exercises}
+\addcontentsline{toc}{section}{Exercises}
+
+\begin{enumerate}[label=\textbf{9.\arabic*.}]
+    \item \textbf{Slack Calculation.} A 4-gate chain has durations $\tau_1 = 20\text{ ns}, \tau_2 = 180\text{ ns}, \tau_3 = 2000\text{ ns},$ and $\tau_4 = 500\text{ ns}$. If total makespan is $3500\text{ ns}$, compute $t_{\text{ASAP}}, t_{\text{ALAP}},$ and slack $\mathcal{S}$ for each gate.
+    \item \textbf{Decoherence Decay.} An EPR pair with $F_0 = 0.96$ sits in an idle memory buffer for $50\,\mu\text{s}$ in a processor with $T_2^* = 50\,\mu\text{s}$. Compute the final fidelity under eager scheduling vs JIT scheduling.
+    \item \textbf{XY4 Net Unitary.} Prove that the XY4 sequence $(X_\pi Y_\pi X_\pi Y_\pi)$ is identity even when each pulse suffers an over-rotation error $\theta = \pi + \epsilon$.
+    \item \textbf{Free Float vs. Total Float.} In a DAG, prove that for any operation $u$, $FF_u \le \mathcal{S}_{\text{total}}(u)$, with equality holding if and only if all successors of $u$ lie on critical paths.
+    \item \textbf{KDD-8 Pulse Synthesis.} Derive the 8-pulse KDD sequence and show how its filter function $F(\omega)$ achieves higher high-pass cut-off frequency than standard CPMG.
+    \item \textbf{Lindblad Jump Operator Derivation.} Solve the Lindblad equation analytically for a single qubit initialized in $\ket{+} = \frac{1}{\sqrt{2}}(\ket{0}+\ket{1})$ subject to pure dephasing with jump operator $\hat{L} = \sqrt{\gamma_\phi} \hat{\sigma}_z$.
+    \item \textbf{MILP Channel Contention.} In a 4-QPU system, 3 telegates contend for a single optical link. Formulate the queuing problem using the MILP disjunctive formulation~\eqref{eq:milp_disjunctive_1}--\eqref{eq:milp_disjunctive_2} to minimize total qubit buffer idle time.
+    \item \textbf{CPMG vs. XY4 Robustness.} Explain why the Carr-Purcell-Meiboom-Gill (CPMG) sequence $[X_\pi - X_\pi - X_\pi - X_\pi]$ fails to refocus dephasing when the initial qubit state lies along the $Y$-axis, whereas XY4 succeeds.
+    \item \textbf{Uhrig Pulse Timings.} Calculate the exact pulse timestamps $t_1, t_2, t_3, t_4, t_5$ for a 5-pulse UDD sequence operating across a total idle gap of $T = 10\,\mu\text{s}$.
+    \item \textbf{Filter Function Asymptotics.} Show that for an $N$-pulse UDD sequence, the filter function behaves as $F(\omega T) \propto (\omega T)^{2(N+1)}$ as $\omega \to 0$, proving $N$-th order noise cancellation.
+\end{enumerate}

@@ -1,0 +1,248 @@
+\chapter{MLIR Dialect Developer Quickstart Guide}
+\label{app:mlir_quickstart}
+
+\begin{quote}
+\textit{``Writing an MLIR dialect is the modern equivalent of writing an instruction set architecture: you define the fundamental types, operations, invariants, and transformation passes that shape computation.''}
+\end{quote}
+
+This appendix serves as a practical, hands-on developer manual for setting up, building, and extending the \texttt{dqc} MLIR dialect from source.
+
+% ==============================================================================
+\section{Project Directory Structure}
+\label{sec:app_project_structure}
+% ==============================================================================
+
+An out-of-tree MLIR dialect repository follows standard LLVM project conventions:
+
+\begin{lstlisting}[language=MLIR, caption={Standard Out-of-Tree MLIR Dialect Directory Hierarchy}]
+dqc-compiler/
+|-- CMakeLists.txt
+|-- include/
+|   \-- dqc/
+|       |-- DQCDialect.h
+|       |-- DQCDialect.td          # Root Dialect TableGen
+|       |-- DQCTypes.h
+|       |-- DQCTypes.td            # Custom Types TableGen
+|       |-- DQCOps.h
+|       |-- DQCOps.td              # Operation Definitions TableGen
+|       \-- Passes/
+|           |-- Passes.h
+|           \-- Passes.td          # Pass Definitions TableGen
+|-- lib/
+|   \-- DQC/
+|       |-- CMakeLists.txt
+|       |-- DQCDialect.cpp         # Dialect Initialization
+|       |-- DQCTypes.cpp           # Custom Type Parsers/Printers
+|       |-- DQCOps.cpp             # Op Verifiers & Custom Logic
+|       \-- Transforms/
+|           |-- CanonicalizationPass.cpp
+|           |-- HypergraphPartitioningPass.cpp
+|           |-- TeleportationSynthesisPass.cpp
+|           |-- CoherenceAwareSchedulingPass.cpp
+|           \-- LowerToQIRPass.cpp
+|-- python/
+|   \-- dqc/
+|       |-- CMakeLists.txt
+|       |-- DQCModule.cpp          # pybind11 C-API Bindings
+|       \-- __init__.py
+|-- test/
+|   |-- CMakeLists.txt
+|   |-- lit.cfg.py
+|   \-- DQC/
+|       |-- pass1_canonicalize.mlir
+|       |-- pass2_partition.mlir
+|       |-- pass3_teleport.mlir
+|       |-- pass4_schedule.mlir
+|       \-- pass5_lowering.mlir
+\-- tools/
+    \-- dqc-opt/
+        |-- CMakeLists.txt
+        \-- dqc-opt.cpp            # Custom Compiler Driver Binary
+\end{lstlisting}
+
+% ==============================================================================
+\section{CMake Build System Configuration}
+\label{sec:app_cmake_config}
+% ==============================================================================
+
+To build against an existing LLVM/MLIR installation:
+
+\begin{lstlisting}[language=C++, caption={Root CMakeLists.txt for DQC Dialect}]
+cmake_minimum_required(VERSION 3.20)
+project(dqc-compiler LANGUAGES CXX C)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(MLIR REQUIRED CONFIG)
+
+message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
+message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+
+set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
+set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
+set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
+
+list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
+list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+
+include(TableGen)
+include(AddLLVM)
+include(AddMLIR)
+include(HandleLLVMOptions)
+
+include_directories(${LLVM_INCLUDE_DIRS})
+include_directories(${MLIR_INCLUDE_DIRS})
+include_directories(${PROJECT_SOURCE_DIR}/include)
+include_directories(${PROJECT_BINARY_DIR}/include)
+
+add_subdirectory(include/dqc)
+add_subdirectory(lib)
+add_subdirectory(tools)
+add_subdirectory(test)
+\end{lstlisting}
+
+\begin{lstlisting}[language=C++, caption={TableGen Include CMakeLists.txt (include/dqc/CMakeLists.txt)}]
+set(LLVM_TARGET_DEFINITIONS DQCDialect.td)
+mlir_tablegen(DQCDialect.h.inc -gen-dialect-decls)
+mlir_tablegen(DQCDialect.cpp.inc -gen-dialect-defs)
+add_public_tablegen_target(DQCGenDialect)
+
+set(LLVM_TARGET_DEFINITIONS DQCOps.td)
+mlir_tablegen(DQCOps.h.inc -gen-op-decls)
+mlir_tablegen(DQCOps.cpp.inc -gen-op-defs)
+add_public_tablegen_target(DQCGenOps)
+
+set(LLVM_TARGET_DEFINITIONS DQCTypes.td)
+mlir_tablegen(DQCTypes.h.inc -gen-typedef-decls)
+mlir_tablegen(DQCTypes.cpp.inc -gen-typedef-defs)
+add_public_tablegen_target(DQCGenTypes)
+\end{lstlisting}
+
+% ==============================================================================
+\section{Driver Implementation: \texttt{dqc-opt.cpp}}
+\label{sec:app_dqc_opt}
+% ==============================================================================
+
+\begin{lstlisting}[language=C++, caption={Custom Tool Driver (tools/dqc-opt/dqc-opt.cpp)}]
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/InitAllPasses.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "dqc/DQCDialect.h"
+#include "dqc/Passes/Passes.h"
+
+int main(int argc, char **argv) {
+  mlir::DialectRegistry registry;
+
+  // Register Standard MLIR Dialects
+  mlir::registerAllDialects(registry);
+  mlir::registerAllPasses();
+
+  // Register DQC Custom Dialect & Passes
+  registry.insert<mlir::dqc::DQCDialect>();
+  mlir::dqc::registerDQCPasses();
+
+  return mlir::asMainReturnCode(
+      mlir::MlirOptMain(argc, argv, "Distributed Quantum Compiler Driver\n", registry));
+}
+\end{lstlisting}
+
+% ==============================================================================
+\section{Lit and FileCheck Regression Testing Harness}
+\label{sec:app_testing_harness}
+% ==============================================================================
+
+To verify optimization passes in continuous integration pipelines:
+
+\begin{lstlisting}[language=Python, caption={LLVM Lit Test Suite Configuration (test/lit.cfg.py)}]
+import os
+import lit.formats
+
+config.name = "DQC"
+config.test_format = lit.formats.ShTest(True)
+config.suffixes = [".mlir", ".ll"]
+
+config.test_source_root = os.path.dirname(__file__)
+config.test_exec_root = os.path.join(config.my_obj_root, "test")
+
+config.substitutions.append(("%PATH%", config.environment["PATH"]))
+\end{lstlisting}
+
+\begin{lstlisting}[language=MLIR, caption={Sample FileCheck Test for Pass 3 (test/DQC/teleportation.mlir)}]
+// RUN: dqc-opt %s -dqc-teleportation-synthesis | FileCheck %s
+
+// CHECK-LABEL: func.func @test_remote_cnot
+func.func @test_remote_cnot() {
+  %q0 = dqc.alloc_qubit on 0 : !dqc.qubit
+  %q1 = dqc.alloc_qubit on 1 : !dqc.qubit
+
+  // CHECK: %epr = dqc.prepare_epr 0 <-> 1 fid 0.960
+  // CHECK: %{{.*}}, %{{.*}} = dqc.telegate %{{.*}}, %{{.*}}, %epr {kind = "CNOT"}
+  %0, %1 = dqc.cnot %q0, %q1 : !dqc.qubit, !dqc.qubit
+  return
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=MLIR, caption={Sample FileCheck Test for Pass 4 JIT Scheduling (test/DQC/scheduling.mlir)}]
+// RUN: dqc-opt %s -dqc-coherence-scheduling | FileCheck %s
+
+// CHECK-LABEL: func.func @test_jit_hoisting
+func.func @test_jit_hoisting() {
+  %q0 = dqc.alloc_qubit on 0 : !dqc.qubit
+  %q1 = dqc.alloc_qubit on 1 : !dqc.qubit
+
+  // CHECK: dqc.prepare_epr {{.*}} {sched.time_ns = 2000.0}
+  %epr = dqc.prepare_epr 0 <-> 1 fid 0.98 : !dqc.epr_pair
+  %0, %1 = dqc.telegate %q0, %q1, %epr {kind = "CNOT"} : !dqc.qubit, !dqc.qubit
+  return
+}
+\end{lstlisting}
+
+% ==============================================================================
+\section{Python Bindings and MLIR C-API Integration}
+\label{sec:app_python_bindings}
+% ==============================================================================
+
+To allow data scientists and quantum algorithms researchers to drive compilation from Python and Jupyter notebooks:
+
+\begin{lstlisting}[language=C++, caption={pybind11 MLIR Python Bindings (python/dqc/DQCModule.cpp)}]
+#include <pybind11/pybind11.h>
+#include "mlir-c/Bindings/Python/Interop.h"
+#include "dqc/DQCDialect.h"
+
+namespace py = pybind11;
+
+PYBIND11_MODULE(_dqcOps, m) {
+  m.doc() = "DQC MLIR Dialect Python Bindings";
+
+  m.def("register_dialect", [](MlirContext context) {
+    MlirDialectHandle handle = mlirGetDialectHandle__dqc__();
+    mlirDialectHandleRegisterDialect(handle, context);
+  });
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={Python SDK Script Executing DQC Passes (example.py)}]
+import dqc
+from mlir.ir import Context, Module
+
+with Context() as ctx:
+    dqc.register_dialect(ctx)
+    mod = Module.parse("""
+    module {
+      func.func @bell() {
+        %q0 = dqc.alloc_qubit on 0 : !dqc.qubit
+        %q1 = dqc.alloc_qubit on 1 : !dqc.qubit
+        %0 = dqc.h %q0 : !dqc.qubit
+        %1, %2 = dqc.cnot %0, %q1 : !dqc.qubit, !dqc.qubit
+        return
+      }
+    }
+    """)
+    
+    # Run 5-Pass Pipeline
+    pm = dqc.PassManager.from_pipeline("dqc-pipeline")
+    pm.run(mod.operation)
+    print(mod)
+\end{lstlisting}
