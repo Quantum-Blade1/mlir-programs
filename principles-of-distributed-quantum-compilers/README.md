@@ -110,15 +110,17 @@ This treatise is the definitive foundational literature for distributed quantum 
 ### Option 1: Overleaf (Recommended for Zero-Install Compilation)
 1. Generate the upload archive:
    ```bash
-   cd book && make overleaf-zip
+   cd principles-of-distributed-quantum-compilers && make overleaf-zip
    ```
 2. Upload `book_overleaf.zip` directly to [Overleaf](https://www.overleaf.com).
 3. Set the compiler to **pdfLaTeX** or **XeLaTeX** and click **Recompile**.
 
-### Option 2: Local Compilation via Make
-If you have MacTeX or TeX Live installed:
+### Option 2: Local Compilation via Tectonic or Make
+If you have Tectonic, MacTeX, or TeX Live installed:
 ```bash
-cd book
+cd principles-of-distributed-quantum-compilers
+tectonic main.tex
+# or
 make
 ```
 
