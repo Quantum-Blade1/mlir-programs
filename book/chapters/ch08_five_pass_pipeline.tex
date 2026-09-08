@@ -1,0 +1,174 @@
+\chapter{The Five-Pass Progressive Compilation Pipeline}
+\label{ch:five_pass_pipeline}
+
+\begin{quote}
+\textit{``Compilation is not a monolithic leap from high-level algorithm to hardware pulses; it is an invariant-preserving journey through five progressive transformation stages.''}
+\end{quote}
+
+The core execution engine of the DQC compiler is structured as a five-stage progressive optimization pipeline implemented using the MLIR `PassManager` architecture. Each pass addresses a distinct mathematical and physical abstraction layer, enforcing strict preconditions and yielding formal postconditions. 
+
+This chapter examines the mechanical inner workings of each of the five compilation passes:
+\begin{enumerate}
+    \item \textbf{Pass 1:} Canonical Ingestion and IR Normalization
+    \item \textbf{Pass 2:} Hypergraph Extraction and Balanced Multi-QPU Partitioning
+    \item \textbf{Pass 3:} Non-Local Teleportation and Cat-State Synthesis
+    \item \textbf{Pass 4:} Coherence-Aware DAG Scheduling and Latency Hiding
+    \item \textbf{Pass 5:} Distributed Target Lowering and Runtime Code Generation
+\end{enumerate}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.88, >=stealth]
+        % Stages Vertical Stack
+        % Pass 1
+        \draw[rounded corners=2mm, fill=blue!10, draw=darkblue, line width=1pt] (-4.5, 4.2) rectangle (4.5, 5.2);
+        \node[font=\small\bfseries\color{darkblue}] at (0, 4.85) {Pass 1: Canonical Ingestion \& IR Normalization};
+        \node[font=\tiny\color{darkblue}] at (0, 4.45) {Input AST $\to$ Canonical 1Q/2Q Basis, Constant Folding, Peephole Reduction};
+        
+        % Pass 2
+        \draw[rounded corners=2mm, fill=blue!15, draw=darkblue, line width=1pt] (-4.5, 2.6) rectangle (4.5, 3.6);
+        \node[font=\small\bfseries\color{darkblue}] at (0, 3.25) {Pass 2: Hypergraph Extraction \& Balanced Partitioning};
+        \node[font=\tiny\color{darkblue}] at (0, 2.85) {Construct $\mathcal{H}=(V, E) \to$ KaHyPar Multi-level Cut $\to$ QPU Attributes Attached};
+        
+        % Pass 3
+        \draw[rounded corners=2mm, fill=compilerteal!15, draw=compilerteal, line width=1pt] (-4.5, 1.0) rectangle (4.5, 2.0);
+        \node[font=\small\bfseries\color{compilerteal}] at (0, 1.65) {Pass 3: Non-Local Teleportation \& Cat-State Synthesis};
+        \node[font=\tiny\color{compilerteal}] at (0, 1.25) {Cross-Boundary Gates Rewritten $\to$ \texttt{dqc.epr\_alloc} + \texttt{dqc.telegate}};
+        
+        % Pass 4
+        \draw[rounded corners=2mm, fill=quantumviolet!15, draw=quantumviolet, line width=1pt] (-4.5, -0.6) rectangle (4.5, 0.4);
+        \node[font=\small\bfseries\color{quantumviolet}] at (0, 0.05) {Pass 4: Coherence-Aware DAG Scheduling};
+        \node[font=\tiny\color{quantumviolet}] at (0, -0.35) {Critical Path DAG $\to$ Classical Latency Hiding $\to$ $T_2^*$ Envelope Check};
+        
+        % Pass 5
+        \draw[rounded corners=2mm, fill=green!15, draw=black, line width=1pt] (-4.5, -2.2) rectangle (4.5, -1.2);
+        \node[font=\small\bfseries] at (0, -1.55) {Pass 5: Distributed Target Lowering \& Code Generation};
+        \node[font=\tiny] at (0, -1.95) {Split Module $\to$ Multi-QPU QIR/OpenQASM + Classical MPI Orchestrator};
+        
+        % Arrows Between Passes
+        \draw[->, line width=1.5pt, color=darkblue] (0, 4.2) -- (0, 3.6);
+        \draw[->, line width=1.5pt, color=darkblue] (0, 2.6) -- (0, 2.0);
+        \draw[->, line width=1.5pt, color=compilerteal] (0, 1.0) -- (0, 0.4);
+        \draw[->, line width=1.5pt, color=quantumviolet] (0, -0.6) -- (0, -1.2);
+        
+        % Output Branches
+        \draw[->, line width=1.2pt] (-2.5, -2.2) -- (-2.5, -3.0) node[below, font=\scriptsize, align=center] {QPU 0 Binary\\(\texttt{.qir} / Pulse)};
+        \draw[->, line width=1.2pt] (0, -2.2) -- (0, -3.0) node[below, font=\scriptsize, align=center] {MPI Orchestrator\\(\texttt{.cpp} / RDMA)};
+        \draw[->, line width=1.2pt] (2.5, -2.2) -- (2.5, -3.0) node[below, font=\scriptsize, align=center] {QPU 1 Binary\\(\texttt{.qir} / Pulse)};
+    \end{tikzpicture}
+    \caption{The Five-Pass Compilation Pipeline in DQC. The pipeline transforms high-level monolithic quantum circuits into synchronized, multi-target distributed executables.}
+    \label{fig:five_pass_dataflow}
+\end{figure}
+
+% ==============================================================================
+\section{Pass 1: Canonical Ingestion and Normalization}
+\label{sec:pass1_ingestion}
+% ==============================================================================
+
+The ingestion pass parses external input representations (OpenQASM 3.0, QIR bytecode, or high-level algorithm definitions) and emits an unpartitioned monolithic `dqc` MLIR module.
+
+\subsection{Peephole Algebraic Reductions}
+Before partitioning, Pass 1 executes local peephole rewrites to minimize gate depth and eliminate redundant operators. The pass applies standard group-theoretic identities:
+\begin{align}
+    H \cdot H &\to \mathbb{I}, \quad X \cdot X \to \mathbb{I}, \quad Z \cdot Z \to \mathbb{I}, \\
+    R_z(\theta_1) \cdot R_z(\theta_2) &\to R_z(\theta_1 + \theta_2), \\
+    \text{CNOT}(c, t) \cdot \text{CNOT}(c, t) &\to \mathbb{I}.
+\end{align}
+
+\begin{passbox}{Pass 1 Mechanics}
+\textbf{Entry Condition:} Raw quantum circuit AST with arbitrary basis gates.\\
+\textbf{Exit Invariants:}
+\begin{itemize}
+    \item Universal basis reduction: All operations lowered to $\{R_x, R_y, R_z, H, \text{CNOT}, \text{CZ}, \text{Measure}\}$.
+    \item Linear SSA verification: Single use of every `!dqc.qubit` SSA value.
+    \item Dead gate elimination completed.
+\end{itemize}
+\end{passbox}
+
+% ==============================================================================
+\section{Pass 2: Hypergraph Extraction and Partitioning}
+\label{sec:pass2_partitioning}
+% ==============================================================================
+
+Pass 2 transforms the sequential IR into a hypergraph $\mathcal{H} = (\mathcal{V}, \mathcal{E})$ as formalized in Chapter~\ref{ch:hypergraph_partitioning}. 
+
+\subsection{Attribute Attachment}
+After KaHyPar computes the balanced partition $\pi: Q \to \{1, \dots, M\}$, Pass 2 decorates every qubit allocation operation with a physical QPU affinity attribute:
+
+\begin{lstlisting}[language=MLIR, caption={Intermediate IR after Pass 2 (QPU Affinity Attached)}]
+// Allocations annotated with physical placement attributes
+%q0 = dqc.alloc_qubit() {qpu.id = 0 : i32, physical.pin = 4 : i32} : !dqc.qubit
+%q1 = dqc.alloc_qubit() {qpu.id = 0 : i32, physical.pin = 5 : i32} : !dqc.qubit
+%q2 = dqc.alloc_qubit() {qpu.id = 1 : i32, physical.pin = 2 : i32} : !dqc.qubit
+%q3 = dqc.alloc_qubit() {qpu.id = 1 : i32, physical.pin = 3 : i32} : !dqc.qubit
+
+// Gates initially retain monolithic syntax but cross QPU boundaries
+%q0_1, %q2_1 = dqc.cnot %q0, %q2 : !dqc.qubit, !dqc.qubit  // CROSS-QPU EDGE!
+\end{lstlisting}
+
+% ==============================================================================
+\section{Pass 3: Non-Local Teleportation Synthesis}
+\label{sec:pass3_synthesis}
+% ==============================================================================
+
+Pass 3 traverses the IR and inspects every multi-qubit operation. If the source operands have conflicting `qpu.id` attributes, the operation is flagged as non-local.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.9, >=stealth]
+        % Left: Before rewrite
+        \node[draw, rectangle, fill=red!10, draw=red!80!black, rounded corners=2mm, font=\small\bfseries, align=center] (before) at (-3.5, 2) {
+            \texttt{\%out:2 = dqc.cnot \%qc, \%qt}\\
+            \scriptsize \texttt{owner(\%qc) = QPU 0}\\
+            \scriptsize \texttt{owner(\%qt) = QPU 1}
+        };
+        
+        % Right: After rewrite
+        \node[draw, rectangle, fill=green!10, draw=compilerteal, rounded corners=2mm, font=\small, align=left] (after) at (3.5, 2) {
+            \texttt{\%epr = dqc.distribute\_epr <0, 1>}\\
+            \texttt{\%qc\_1, \%ea = dqc.cnot \%qc, \%epr\#0}\\
+            \texttt{\%m1 = dqc.measure \%ea}\\
+            \texttt{\%eb\_1, \%qt\_1 = dqc.cnot \%epr\#1, \%qt}\\
+            \texttt{\%eb\_2 = dqc.h \%eb\_1}\\
+            \texttt{\%m2 = dqc.measure \%eb\_2}\\
+            \texttt{\%qt\_final = dqc.pauli\_fixup \%qt\_1, \%m1, "X"}\\
+            \texttt{\%qc\_final = dqc.pauli\_fixup \%qc\_1, \%m2, "Z"}
+        };
+        
+        % Transformation Arrow
+        \draw[->, line width=2pt, color=darkblue] (-0.8, 2) -- node[above, font=\footnotesize\bfseries] {Pattern} node[below, font=\footnotesize\bfseries] {Rewrite} (0.8, 2);
+    \end{tikzpicture}
+    \caption{Pattern rewrite mechanics in Pass 3. A monolithic cross-QPU CNOT is expanded into the deterministic Eisert teleportation protocol.}
+    \label{fig:pass3_pattern_rewrite}
+\end{figure}
+
+The MLIR rewrite pattern matches against `dqc.cnot`, allocates an EPR handle via `dqc.distribute_epr`, and inserts the required local CNOTs, measurements, and classical fix-up operations.
+
+% ==============================================================================
+\section{Pass 4: Coherence-Aware DAG Scheduling}
+\label{sec:pass4_scheduling}
+% ==============================================================================
+
+A naive sequential ordering of teleportation operations causes catastrophic decoherence: if an EPR pair is distributed at time $t=0$, but the downstream gate is scheduled at $t = 100\,\mu\text{s}$, the Bell state will have decayed past the classical threshold $F < 2/3$.
+
+Pass 4 constructs a **Dependency DAG** taking into account:
+\begin{itemize}
+    \item Physical gate execution durations ($\tau_{\text{1Q}} \approx 20\text{ ns}, \tau_{\text{2Q}} \approx 200\text{ ns}, \tau_{\text{meas}} \approx 500\text{ ns}$),
+    \item Interconnect EPR generation latency ($\tau_{\text{epr}} \approx 1.5\,\mu\text{s}$), and
+    \item Classical inter-refrigerator network round-trip time ($\tau_{\text{class}} \approx 50\text{ ns}$).
+\end{itemize}
+
+The scheduler hoists EPR allocation operations so that EPR pairs arrive at the target QPUs precisely when the controlling data qubits enter their execution window, completely eliminating buffer idle time.
+
+% ==============================================================================
+\section{Pass 5: Target Lowering and Runtime Generation}
+\label{sec:pass5_lowering}
+% ==============================================================================
+
+The final pass splits the unified distributed MLIR module into heterogeneous target outputs:
+\begin{enumerate}
+    \item **Per-QPU Quantum Bytecode:** Emits clean QIR / OpenQASM 3.0 containing only operations local to that QPU.
+    \item **Distributed C++ Orchestrator:** Emits an MPI/RDMA runtime driver that handles classical message routing, measurement outcome synchronization, and EPR hardware triggers.
+\end{enumerate}
+
+This modular five-pass separation provides the structural guarantee of correctness, allowing DQC to scale from small multi-chip prototypes to large-scale quantum datacenters.

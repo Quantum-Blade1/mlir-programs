@@ -1,0 +1,227 @@
+\chapter{The DQC Dialect: Designing a Domain-Specific IR in MLIR}
+\label{ch:mlir_compiler_architecture}
+
+\begin{quote}
+\textit{``Monolithic quantum compilers treat circuits as flat arrays of gates. To compile distributed quantum computers, we must elevate quantum semantics into a first-class Multi-Level Intermediate Representation with formal types, verifiable invariants, and progressive lowering.''}
+\end{quote}
+
+Quantum compiler engineering has historically suffered from the ``monolithic abstraction gap.'' Early frameworks (such as Qiskit Terra, Cirq, and Quil) represented quantum programs as Python-level Directed Acyclic Graphs (DAGs) or flat gate arrays. While adequate for 5-qubit single-chip experiments, these flat representations collapse under the demands of distributed quantum computing. A distributed compiler must simultaneously reason about:
+\begin{enumerate}
+    \item Unitary algebraic optimizations (gate cancellation, commutation rules),
+    \item Partition topology and graph cut costs,
+    \item Classical-quantum control flow (measurement-based feedforward fix-ups),
+    \item Asynchronous message-passing runtimes (EPR distribution queues, MPI/RDMA transports), and
+    \item Physical hardware pulse schedules and cryogenic memory lifetimes.
+\end{enumerate}
+
+No single abstraction level can capture these disparate concerns. This chapter details the design of the **DQC Dialect** built upon the **Multi-Level Intermediate Representation (MLIR)** and LLVM infrastructure. We formalize the TableGen dialect specification, custom quantum type systems, Linear Static Single Assignment (SSA) invariants, and hardware memory models.
+
+% ==============================================================================
+\section{Why MLIR for Distributed Quantum Compilation?}
+\label{sec:why_mlir}
+% ==============================================================================
+
+MLIR provides a modular, extensible compiler framework where multiple domain-specific intermediate representations (dialects) coexist within a unified graph structure. 
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.92, >=stealth]
+        % Level 1: High Level AST
+        \draw[rounded corners=2mm, fill=blue!10, draw=darkblue, line width=1pt] (-4, 4) rectangle (4, 4.9);
+        \node[font=\bfseries\color{darkblue}] at (0, 4.45) {High-Level Quantum Algorithms (Qiskit, OpenQASM 3.0, Cirq)};
+        
+        % Level 2: DQC Monolithic Dialect
+        \draw[rounded corners=2mm, fill=blue!20, draw=darkblue, line width=1pt] (-4, 2.5) rectangle (4, 3.4);
+        \node[font=\bfseries\color{darkblue}] at (0, 2.95) {\texttt{dqc} Dialect (Monolithic IR: Gates, Unitary Traits)};
+        
+        % Level 3: Partitioned DQC Dialect
+        \draw[rounded corners=2mm, fill=compilerteal!20, draw=compilerteal, line width=1pt] (-4, 1.0) rectangle (4, 1.9);
+        \node[font=\bfseries\color{compilerteal}] at (0, 1.45) {\texttt{dqc.dist} Dialect (QPU Placement, Non-Local Telegates)};
+        
+        % Level 4: Split Lowering (Quantum + Classical Communication)
+        \draw[rounded corners=2mm, fill=quantumviolet!15, draw=quantumviolet, line width=1pt] (-5.5, -0.8) rectangle (-0.5, 0.1);
+        \node[font=\small\bfseries\color{quantumviolet}, align=center] at (-3, -0.35) {QIR / OpenQASM Dialect\\(Local Pulse Schedules)};
+        
+        \draw[rounded corners=2mm, fill=quantumviolet!15, draw=quantumviolet, line width=1pt] (0.5, -0.8) rectangle (5.5, 0.1);
+        \node[font=\small\bfseries\color{quantumviolet}, align=center] at (3, -0.35) {Async / MPI / LLVM Dialect\\(Classical Sync \& Teleportation)};
+        
+        % Level 5: Target Hardware
+        \draw[rounded corners=2mm, fill=gray!20, draw=black, line width=1.2pt] (-4, -2.4) rectangle (4, -1.5);
+        \node[font=\bfseries, align=center] at (0, -1.95) {Distributed Quantum Hardware Controller / FPGA Cluster};
+        
+        % Arrows
+        \draw[->, line width=1.5pt, color=darkblue] (0, 4) -- node[right, font=\tiny] {Ingestion} (0, 3.4);
+        \draw[->, line width=1.5pt, color=darkblue] (0, 2.5) -- node[right, font=\tiny] {Pass 2: Hypergraph Partitioning} (0, 1.9);
+        \draw[->, line width=1.5pt, color=compilerteal] (-2, 1.0) -- (-3, 0.1);
+        \draw[->, line width=1.5pt, color=compilerteal] (2, 1.0) -- (3, 0.1);
+        \draw[->, line width=1.5pt, color=quantumviolet] (-3, -0.8) -- (-2, -1.5);
+        \draw[->, line width=1.5pt, color=quantumviolet] (3, -0.8) -- (2, -1.5);
+    \end{tikzpicture}
+    \caption{The Multi-Level IR Progressive Lowering Pipeline in DQC. The compiler preserves high-level algorithmic intent, progressively transforming monolithic quantum operations into partitioned distributed primitives, then splitting into parallel hardware execution streams (QIR for local qubits, MPI/LLVM for inter-refrigerator network messaging).}
+    \label{fig:mlir_lowering_hierarchy}
+\end{figure}
+
+The advantages of MLIR over traditional monolithic data structures include:
+\begin{itemize}
+    \item **Progressive Lowering:** Transformations occur across distinct semantic levels rather than in a single monolithic compiler pass, enabling verification at each boundary.
+    \item **Declarative Op Definitions (ODS):** Operations, operand types, and side effects are defined declaratively in TableGen, generating C++ verifiers automatically.
+    \item **Declarative Rewrite Rules (DRR):** Quantum algebraic patterns ($H \cdot H \to \mathbb{I}$, $X \cdot Z \to -iY$) are specified declaratively and compiled into optimized pattern matchers.
+    \item **Native Coexistence of Classical and Quantum Semantics:** Classical loop counters, distributed memory pointers, and quantum state registers live within the same compiler basic block.
+\end{itemize}
+
+% ==============================================================================
+\section{Dialect Definition and TableGen Specifications}
+\label{sec:tablegen_spec}
+% ==============================================================================
+
+In MLIR, dialects are formally defined using TableGen (`.td`) files. Below is the exact structural specification of the `dqc` dialect.
+
+\subsection{Dialect Declaration}
+\begin{lstlisting}[language=MLIR, caption={TableGen definition of the DQC Dialect (DQCDialect.td)}]
+// DQCDialect.td - Root Dialect Definition
+def DQC_Dialect : Dialect {
+  let name = "dqc";
+  let summary = "Distributed Quantum Computing Dialect";
+  let description = [{
+    The DQC dialect provides primitives for modeling, partitioning, 
+    scheduling, and lowering distributed quantum circuits across 
+    multi-QPU physical architectures.
+  }];
+  let cppNamespace = "::mlir::dqc";
+  let useDefaultTypePrinterParser = 1;
+}
+\end{lstlisting}
+
+\subsection{Custom Quantum Types}
+Traditional LLVM IR operates on integers and floating-point registers. The DQC dialect introduces domain-specific first-class types:
+\begin{enumerate}
+    \item `!dqc.qubit`: Represents a physical or logical two-level quantum state handle.
+    \item `!dqc.epr_handle`: Represents an allocated entangled bipartite state shared between two QPUs.
+    \item `!dqc.qpu_id`: Represents a physical quantum processor identifier.
+\end{enumerate}
+
+\begin{lstlisting}[language=MLIR, caption={TableGen specification of custom DQC types}]
+def DQC_QubitType : TypeDef<DQC_Dialect, "Qubit"> {
+  let mnemonic = "qubit";
+  let summary = "A quantum bit state handle";
+}
+
+def DQC_EPRHandleType : TypeDef<DQC_Dialect, "EPRHandle"> {
+  let mnemonic = "epr_handle";
+  let summary = "A non-local entangled Bell pair handle";
+  let parameters = (ins "unsigned":$sourceQPU, "unsigned":$targetQPU);
+  let assemblyFormat = "`<` $sourceQPU `,` $targetQPU `>`";
+}
+\end{lstlisting}
+
+\subsection{Operation Declarations}
+Operations in DQC are defined with strict operand and result invariants. Below is the specification of the fundamental non-local operation `dqc.telegate`:
+
+\begin{lstlisting}[language=MLIR, caption={TableGen specification of the distributed Telegate operation}]
+def DQC_TeleGateOp : DQC_Op<"telegate", [
+    AllTypesMatch<["controlIn", "controlOut"]>,
+    AllTypesMatch<["targetIn", "targetOut"]>
+]> {
+  let summary = "Synthesizes a distributed two-qubit gate via teleportation";
+  let arguments = (ins 
+    DQC_QubitType:$controlIn,
+    DQC_QubitType:$targetIn,
+    DQC_EPRHandleType:$eprPair,
+    StrAttr:$gateType
+  );
+  let results = (outs 
+    DQC_QubitType:$controlOut,
+    DQC_QubitType:$targetOut
+  );
+  let assemblyFormat = [{
+    $gateType $controlIn `,` $targetIn `using` $eprPair 
+    attr-dict `:` type($controlIn) `,` type($targetIn) `,` type($eprPair)
+  }];
+}
+\end{lstlisting}
+
+% ==============================================================================
+\section{Linear Static Single Assignment (SSA) in Quantum Logic}
+\label{sec:linear_ssa}
+% ==============================================================================
+
+A central innovation of the DQC dialect is its reconciliation of **Static Single Assignment (SSA)** with the **No-Cloning Theorem** of quantum mechanics.
+
+\subsection{The Quantum Cloning Hazard in Classical SSA}
+In classical SSA (e.g., standard LLVM IR), a computed value `%x` can be read arbitrarily many times by downstream operations:
+\begin{lstlisting}[language=MLIR]
+// Classical SSA - Perfectly Legal (Value Duplication)
+%x = arith.addi %a, %b : i32
+%y1 = arith.muli %x, %c : i32
+%y2 = arith.subi %x, %d : i32  // Multiple uses of %x
+\end{lstlisting}
+
+If applied naively to quantum registers, multiple reads of a qubit SSA value `%q` would imply quantum state cloning:
+\begin{lstlisting}[language=MLIR]
+// ILLEGAL QUANTUM CODE: Violates No-Cloning Theorem!
+%q_out1 = dqc.h %q : !dqc.qubit
+%q_out2 = dqc.x %q : !dqc.qubit  // FATAL: Cloning %q!
+\end{lstlisting}
+
+\subsection{Linear Typing and Affine Value Semantics}
+To guarantee physical validity, DQC enforces **Linear SSA Semantics**:
+\begin{enumerate}
+    \item Every quantum operation consumes its input SSA values and produces fresh output SSA values.
+    \item An SSA value of type `!dqc.qubit` must have **exactly one consumer operation** in the dominance frontier.
+    \item The MLIR operation verifier recursively inspects the `use_empty()` status of consumed handles, raising a compilation error if an active qubit handle is referenced more than once.
+\end{enumerate}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.9, >=stealth]
+        % Valid Linear SSA Stream
+        \node[draw, rectangle, fill=green!15, draw=compilerteal, rounded corners=2mm, font=\small\bfseries] (alloc) at (0, 3) {\%q0 = dqc.alloc\_qubit()};
+        \node[draw, rectangle, fill=blue!10, draw=darkblue, rounded corners=2mm, font=\small\bfseries] (h) at (0, 1.8) {\%q1 = dqc.h \%q0};
+        \node[draw, rectangle, fill=blue!10, draw=darkblue, rounded corners=2mm, font=\small\bfseries] (x) at (0, 0.6) {\%q2 = dqc.x \%q1};
+        \node[draw, rectangle, fill=purple!15, draw=quantumviolet, rounded corners=2mm, font=\small\bfseries] (meas) at (0, -0.6) {\%m = dqc.measure \%q2};
+        
+        \draw[->, line width=1.5pt, color=compilerteal] (alloc) -- node[right, font=\tiny] {Unique Use} (h);
+        \draw[->, line width=1.5pt, color=compilerteal] (h) -- node[right, font=\tiny] {Unique Use} (x);
+        \draw[->, line width=1.5pt, color=compilerteal] (x) -- node[right, font=\tiny] {Linear Terminal} (meas);
+        
+        % Invalid Branch
+        \node[draw, rectangle, fill=red!20, draw=red!80!black, rounded corners=2mm, font=\small\bfseries] (err) at (5, 1.8) {\%q\_illegal = dqc.z \%q0};
+        \draw[->, line width=1.5pt, dashed, color=red!80!black] (alloc.east) -| node[above, font=\tiny\bfseries] {Illegal Second Read!} (err.north);
+        \node[font=\footnotesize\color{red!80!black}, align=left] at (5, 0.6) {\textbf{Verifier Diagnostic:}\\Use-def chain violation:\\\texttt{Qubit SSA value \%q0}\\\texttt{has multiple consumers!}};
+    \end{tikzpicture}
+    \caption{Linear SSA verification in the DQC dialect. Every qubit handle represents a unique quantum state trajectory. Branching reads are caught at compile-time by the dialect verifier.}
+    \label{fig:linear_ssa_verification}
+\end{figure}
+
+% ==============================================================================
+\section{Verifiable Dialect Invariants and Memory Layout}
+\label{sec:dialect_invariants}
+% ==============================================================================
+
+At the C++ implementation level, the DQC compiler validates dialect invariants through custom C++ verification methods attached to each operation:
+
+\begin{lstlisting}[language=C++, caption={C++ Op Verification Hook in DQCDialect.cpp}]
+::mlir::LogicalResult TeleGateOp::verify() {
+  auto eprType = getEprPair().getType().cast<EPRHandleType>();
+  unsigned srcQPU = eprType.getSourceQPU();
+  unsigned dstQPU = eprType.getTargetQPU();
+  
+  if (srcQPU == dstQPU) {
+    return emitOpError("EPR handle must span distinct QPUs, but got src == dst == ") 
+           << srcQPU;
+  }
+  
+  // Verify that control and target qubits belong to disjoint partitions
+  auto ctrlOwner = getQpuOwner(getControlIn());
+  auto tgtOwner = getQpuOwner(getTargetIn());
+  
+  if (ctrlOwner != srcQPU || tgtOwner != dstQPU) {
+    return emitOpError("Telegate QPU mapping mismatch: control belongs to QPU ")
+           << ctrlOwner << ", expected " << srcQPU;
+  }
+  
+  return ::mlir::success();
+}
+\end{lstlisting}
+
+These compile-time verification passes ensure that by the time the circuit reaches target lowering, every non-local gate has verified QPU mappings, valid linear SSA lifetimes, and guaranteed physical hardware routability.

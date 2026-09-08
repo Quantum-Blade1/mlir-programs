@@ -1,0 +1,161 @@
+% ==============================================================================
+% Preamble: Principles of Distributed Quantum Compilers
+% Author: Krish Kumar Sharma
+% ==============================================================================
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% --- Page Geometry (Professional Book Layout) ---
+\usepackage[
+    paper=a4paper,
+    top=2.5cm,
+    bottom=2.5cm,
+    inner=3.0cm,
+    outer=2.5cm,
+    headheight=14pt,
+    footskip=1.2cm
+]{geometry}
+
+% --- Mathematics & Quantum Notation ---
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage{braket} % Dirac notation: \ket{}, \bra{}, \braket{}
+\usepackage{bm}
+
+% --- Graphics & Visualization ---
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows,positioning,fit,backgrounds,calc,matrix,decorations.pathreplacing,decorations.pathmorphing,patterns}
+
+% --- Tables & Typography ---
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+
+% --- Headers & Footers ---
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE]{\bfseries\nouppercase{\leftmark}}
+\fancyhead[RO]{\bfseries\nouppercase{\rightmark}}
+\fancyfoot[LE,RO]{\thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% --- Section Styling ---
+\usepackage{titlesec}
+\titleformat{\chapter}[display]
+  {\normalfont\huge\bfseries\color{darkblue}}
+  {\chaptertitlename\ \thechapter}{20pt}{\Huge}
+
+% --- Color Definitions ---
+\definecolor{darkblue}{RGB}{16, 44, 87}
+\definecolor{quantumviolet}{RGB}{83, 53, 155}
+\definecolor{compilerteal}{RGB}{20, 108, 148}
+\definecolor{codebg}{RGB}{248, 249, 250}
+\definecolor{codeborder}{RGB}{222, 226, 230}
+\definecolor{commentgreen}{RGB}{40, 140, 60}
+\definecolor{keywordblue}{RGB}{25, 70, 180}
+
+% --- Theorem & Definition Environments ---
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+
+\newtcolorbox{definitionbox}[1]{
+    colback=white,
+    colframe=compilerteal,
+    fonttitle=\bfseries\color{white},
+    title=Definition: #1,
+    arc=3mm,
+    boxrule=1pt,
+    breakable
+}
+
+\newtcolorbox{theorembox}[1]{
+    colback=white,
+    colframe=darkblue,
+    fonttitle=\bfseries\color{white},
+    title=Theorem: #1,
+    arc=3mm,
+    boxrule=1pt,
+    breakable
+}
+
+\newtcolorbox{hardwarebox}[1]{
+    colback=codebg,
+    colframe=quantumviolet,
+    fonttitle=\bfseries\color{white},
+    title=Hardware Real-World Note: #1,
+    arc=3mm,
+    boxrule=1pt,
+    breakable
+}
+
+\newtcolorbox{passbox}[1]{
+    colback=codebg,
+    colframe=darkblue,
+    fonttitle=\bfseries\color{white},
+    title=Compiler Pass Mechanics: #1,
+    arc=3mm,
+    boxrule=1pt,
+    breakable
+}
+
+% --- Code Listings (MLIR, LLVM IR, C++) ---
+\usepackage{listings}
+\lstdefinelanguage{MLIR}{
+    keywords={module, func, dqc, mpi, llvm, return, attributes},
+    keywordstyle=\color{keywordblue}\bfseries,
+    ndkeywords={alloc_qubit, h, x, y, z, rx, ry, rz, cnot, cz, swap, ccx, mcx, measure, reset, epr_alloc, telegate, distribute_epr, telegate_sequence},
+    ndkeywordstyle=\color{compilerteal}\bfseries,
+    identifierstyle=\color{black},
+    sensitive=false,
+    comment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    commentstyle=\color{commentgreen}\ttfamily,
+    stringstyle=\color{purple}\ttfamily,
+    morestring=[b]',
+    morestring=[b]"
+}
+
+\lstset{
+    language=MLIR,
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=8pt,
+    numberstyle=\tiny\color{gray},
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=single,
+    rulecolor=\color{codeborder}
+}
+
+% --- Cross-Referencing & Hyperlinks ---
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=darkblue,
+    citecolor=compilerteal,
+    filecolor=magenta,      
+    urlcolor=quantumviolet,
+    pdfauthor={Krish Kumar Sharma},
+    pdftitle={Principles of Distributed Quantum Compilers}
+}
+\usepackage{cleveref}

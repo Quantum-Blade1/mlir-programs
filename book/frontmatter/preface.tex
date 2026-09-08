@@ -1,0 +1,25 @@
+\chapter*{Preface}
+\addcontentsline{toc}{chapter}{Preface}
+
+Quantum computing has reached a critical architectural inflection point. For over two decades, the dominant paradigm in quantum software engineering assumed a monolithic hardware topology: a single quantum processing unit (QPU) housed within a single dilution refrigerator, executing quantum circuits via localized nearest-neighbor interactions. Compilers such as IBM's Qiskit, Cambridge Quantum's $\text{t}|\text{ket}\rangle$, and Google's Cirq were designed around this exact premise.
+
+However, the laws of thermodynamics and condensed matter physics have imposed an unyielding physical ceiling on monolithic processors. As superconducting chips scale beyond a few hundred qubits, dilution refrigerators reach cryogenic thermal load limits driven by high-density coaxial cabling. In trapped-ion and neutral-atom architectures, spatial confinement and optical addressing crosstalk prevent indefinite scaling within a single vacuum chamber. The consensus across academic laboratories and industrial roadmaps—including IBM, IonQ, Atom Computing, and PsiQuantum—is unanimous: \textbf{the path toward fault-tolerant, million-qubit quantum supercomputers requires distributed multi-QPU architectures interconnected by quantum entanglement channels.}
+
+While hardware engineers have made remarkable strides developing metre-long cryogenic coaxial links, photonic interconnects, and ion-shuttling junctions, the software infrastructure required to compile, partition, optimize, and schedule quantum algorithms across distributed QPUs has remained fragmented. 
+
+This treatise represents the first comprehensive, end-to-end exposition of \textbf{Distributed Quantum Compilers}. Bridging quantum information theory, graph partitioning, systems programming, and modern compiler frameworks (specifically the Multi-Level Intermediate Representation, MLIR), this book aims to provide both researchers and systems practitioners with the theoretical foundations and concrete engineering techniques required to command distributed quantum clusters.
+
+\section*{Organization of the Book}
+The book is structured into five cohesive parts:
+\begin{enumerate}
+    \item \textbf{Part I: Physical and Hardware Foundations} establishes the physical limitations of monolithic chips, details the physics of cryogenic and optical interconnects, and formalizes entanglement as a finite network resource.
+    \item \textbf{Part II: Mathematical Models and Circuit Distribution Theory} presents rigorous proofs comparing quantum gate teleportation against classical circuit cutting, formulates hypergraph bisection, and details non-local gate synthesis via the EJPP protocol.
+    \item \textbf{Part III: Compiler Architecture and Multi-Level IR Design} covers the engineering of multi-stage progressive lowering pipelines using MLIR TableGen, the \texttt{dqc} and \texttt{mpi} dialects, and greedy entanglement pre-staging.
+    \item \textbf{Part IV: Empirical Benchmarking, Algorithms, and Runtime Systems} analyzes 16 foundational quantum algorithms running on multi-QPU architectures, backed by empirical execution timings, memory bandwidth roofline characterization, and hardware QIR emission.
+    \item \textbf{Part V: Fault-Tolerant Distributed Quantum Supercomputing} looks forward to distributed surface codes, lattice surgery over quantum channels, magic state distillation factories, and the multi-QPU datacenter of the next decade.
+\end{enumerate}
+
+\vspace{1.5cm}
+\noindent\textbf{Krish Kumar Sharma}\\
+\textit{Bangalore, India}\\
+\textit{\today}

@@ -1,0 +1,199 @@
+\chapter{Coherence-Aware Scheduling and Decoherence Mitigation}
+\label{ch:scheduling_decoherence}
+
+\begin{quote}
+\textit{``In classical compilers, scheduling optimizes for throughput and instruction-level parallelism. In distributed quantum compilers, scheduling is a matter of life or death against exponential decoherence.''}
+\end{quote}
+
+Quantum information is transient. Unlike classical registers that persist indefinitely in SRAM or DRAM, physical qubits continually decay toward their thermal ground state through energy relaxation ($T_1$) and lose quantum phase coherence through environmental fluctuations ($T_2^*$). When an algorithm is partitioned across multiple Quantum Processing Units, inter-QPU communication introduces macroscopic latencies:
+\begin{itemize}
+    \item EPR generation and distribution latency ($\tau_{\text{epr}} \approx 1\text{--}5\,\mu\text{s}$),
+    \item Single-photon or microwave detector integration times ($\tau_{\text{meas}} \approx 300\text{--}800\text{ ns}$), and
+    \item Inter-refrigerator classical signaling propagation ($\tau_{\text{class}} = L/v \approx 10\text{--}100\text{ ns}$).
+\end{itemize}
+
+If a compiler schedules quantum operations naively, qubits on receiving QPUs will sit idle in quantum memory buffers while waiting for communication transactions to complete. Within tens of microseconds, phase coherence decays past the classical advantage threshold, destroying computational fidelity.
+
+This chapter presents the mathematical theory and algorithms behind **Coherence-Aware DAG Scheduling**. We formalize critical-path analysis, establish Just-In-Time (JIT) entanglement allocation, analyze classical latency hiding, and detail the automated synthesis of Dynamical Decoupling (DD) sequences to preserve quantum state integrity during unavoidable communication delays.
+
+% ==============================================================================
+\section{Temporal Modeling of Distributed Quantum Circuits}
+\label{sec:temporal_modeling}
+% ==============================================================================
+
+To schedule a distributed circuit, the compiler transforms the intermediate representation into a **Weighted Directed Acyclic Graph (DAG)** $\mathcal{G}_{\text{DAG}} = (\mathcal{V}_{\text{ops}}, \mathcal{E}_{\text{dep}})$.
+
+\subsection{Vertex and Edge Semantics in the Scheduling DAG}
+\begin{itemize}
+    \item \textbf{Vertices ($u \in \mathcal{V}_{\text{ops}}$):} Represent individual quantum gates, measurements, EPR generation requests, or classical synchronization barriers. Each vertex has an execution duration $\tau(u)$ determined by the target hardware calibrated gate times (Table~\ref{tab:hardware_latencies}).
+    \item \textbf{Edges ($(u, v) \in \mathcal{E}_{\text{dep}}$):} Represent causal dependencies arising from:
+    \begin{enumerate}
+        \item \textit{Quantum Data Dependencies:} Gate $v$ acts on a qubit register produced by gate $u$.
+        \item \textit{Entanglement Dependencies:} A non-local telegate $v$ requires the completion of an EPR allocation operation $u$.
+        \item \textit{Classical Feedforward Dependencies:} A Pauli fix-up gate $v$ requires measurement outcome bits emitted by measurement $u$.
+    \end{enumerate}
+\end{itemize}
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Empirical Hardware Gate Latencies and Coherence Limits in Superconducting Architectures}
+    \label{tab:hardware_latencies}
+    \begin{tabularx}{\textwidth}{llcc}
+        \toprule
+        \textbf{Operation / Metric} & \textbf{Physical Mechanism} & \textbf{Typical Duration ($\tau$)} & \textbf{Error Rate ($\epsilon$)} \\
+        \midrule
+        Single-Qubit Gate (1Q) & Microwave DRAG Pulse ($\pi/2, \pi$) & $20\text{ ns}$ & $1 \times 10^{-4}$ \\
+        Local Two-Qubit Gate (2Q) & Cross-Resonance / Tunable Coupler & $180\text{ ns}$ & $3 \times 10^{-3}$ \\
+        Dispersive Readout & Resonator Ring-up + Demodulation & $500\text{ ns}$ & $1 \times 10^{-2}$ \\
+        EPR Generation (Link) & Parametric TWPA / Photon Emission & $2000\text{ ns}$ ($2\,\mu\text{s}$) & $5 \times 10^{-2}$ \\
+        Inter-Fridge Fiber Delay & Classical Light in Fiber ($10\text{ m}$) & $50\text{ ns}$ & $0$ \\
+        Qubit Relaxation ($T_1$) & Dielectric Substrate Loss & $80\,\mu\text{s}$ & --- \\
+        Qubit Dephasing ($T_2^*$) & $1/f$ Flux Noise & $60\,\mu\text{s}$ & --- \\
+        Dynamical Decoupled ($T_2^{\text{DD}}$) & XY4 / CPMG Pulse Train & $350\,\mu\text{s}$ & --- \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+% ==============================================================================
+\section{ASAP vs. ALAP Scheduling and the Slack Metric}
+\label{sec:asap_alap}
+% ==============================================================================
+
+Traditional compilers schedule instructions using either **As-Soon-As-Possible (ASAP)** or **As-Late-As-Possible (ALAP)** traversals:
+\begin{align}
+    t_{\text{ASAP}}(v) &= \max_{(u, v) \in \mathcal{E}} \left( t_{\text{ASAP}}(u) + \tau(u) \right), \\
+    t_{\text{ALAP}}(u) &= \min_{(u, v) \in \mathcal{E}} \left( t_{\text{ALAP}}(v) - \tau(u) \right).
+\end{align}
+
+The operational difference between these two timestamps defines the **Scheduling Slack** $\mathcal{S}(u)$:
+\begin{equation}
+    \mathcal{S}(u) = t_{\text{ALAP}}(u) - t_{\text{ASAP}}(u).
+    \label{eq:slack_definition}
+\end{equation}
+Operations with zero slack ($\mathcal{S}(u) = 0$) reside on the **Critical Path** of the distributed program. Any delay in executing a critical-path operation extends the overall execution latency of the multi-QPU machine.
+
+\subsection{The Eager Allocation Hazard in Distributed Systems}
+In classical compilers, executing operations ASAP is universally preferred because it maximizes execution throughput. In distributed quantum compilers, however, eager ASAP allocation of entangled states is fatal.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.9, >=stealth]
+        % ASAP Schedule (Hazardous)
+        \node[font=\bfseries\color{red!80!black}] at (-3.5, 3.5) {(a) ASAP Eager Scheduling (Hazardous)};
+        % Timeline axes
+        \draw[->, line width=1pt] (-7, 2.5) -- (0.5, 2.5) node[right, font=\tiny] {Time};
+        % QPU 0
+        \node[font=\tiny] at (-7.5, 2.0) {QPU 0};
+        \draw[fill=blue!20] (-6.8, 1.8) rectangle (-4.5, 2.2) node[midway, font=\tiny] {Local 2Q Gates};
+        \draw[fill=purple!20] (-4.2, 1.8) rectangle (-2.5, 2.2) node[midway, font=\tiny] {Telegate CX};
+        % QPU 1
+        \node[font=\tiny] at (-7.5, 1.0) {QPU 1};
+        \draw[fill=green!20, draw=compilerteal] (-6.8, 0.8) rectangle (-5.0, 1.2) node[midway, font=\tiny] {EPR Gen};
+        % Idle decay region
+        \draw[pattern=north east lines, pattern color=red!60, draw=red] (-5.0, 0.8) rectangle (-4.2, 1.2);
+        \node[font=\tiny\color{red!80!black}, below] at (-4.6, 0.8) {Idle Buffer ($F \to 0.5$)};
+        \draw[fill=purple!20] (-4.2, 0.8) rectangle (-2.5, 1.2) node[midway, font=\tiny] {Telegate CX};
+
+        % JIT Schedule (Optimal)
+        \node[font=\bfseries\color{compilerteal}] at (4.5, 3.5) {(b) Just-In-Time (JIT) Scheduling (Optimal)};
+        % Timeline axes
+        \draw[->, line width=1pt] (1, 2.5) -- (8.5, 2.5) node[right, font=\tiny] {Time};
+        % QPU 0
+        \node[font=\tiny] at (0.5, 2.0) {QPU 0};
+        \draw[fill=blue!20] (1.2, 1.8) rectangle (3.5, 2.2) node[midway, font=\tiny] {Local 2Q Gates};
+        \draw[fill=purple!20] (3.8, 1.8) rectangle (5.5, 2.2) node[midway, font=\tiny] {Telegate CX};
+        % QPU 1
+        \node[font=\tiny] at (0.5, 1.0) {QPU 1};
+        % Delayed EPR Gen
+        \draw[fill=green!20, draw=compilerteal] (2.0, 0.8) rectangle (3.8, 1.2) node[midway, font=\tiny] {Delayed EPR Gen};
+        \draw[fill=purple!20] (3.8, 0.8) rectangle (5.5, 1.2) node[midway, font=\tiny] {Telegate CX};
+        
+        \draw[<->, line width=1pt, color=compilerteal] (3.8, 0.5) -- (3.8, 2.5);
+        \node[font=\tiny\color{compilerteal}, below] at (3.8, 0.4) {Zero Buffer Idle Time!};
+    \end{tikzpicture}
+    \caption{Comparison of distributed scheduling policies. (a) Eager ASAP scheduling generates the EPR pair early, forcing it to sit in a lossy buffer while QPU 0 completes unrelated gates, degrading fidelity. (b) JIT scheduling delays EPR generation so that the entangled pair arrives exactly at the instant of telegate execution.}
+    \label{fig:jit_scheduling_comparison}
+\end{figure}
+
+As illustrated in Figure~\ref{fig:jit_scheduling_comparison}, if an EPR pair is allocated eagerly at $t=0$, but its consuming non-local CNOT cannot execute until $t = 30\,\mu\text{s}$ due to upstream dependencies on QPU 0, the communication ancillae experience $30\,\mu\text{s}$ of pure dephasing. The DQC scheduling pass resolves this by applying **Just-In-Time (JIT) Entanglement Scheduling**.
+
+\begin{definitionbox}{Just-In-Time (JIT) Scheduling Rule}
+For every non-local gate operation $g_{\text{tele}}$ with earliest execution timestamp $t_{\text{exec}}(g_{\text{tele}})$, its corresponding entanglement generation operation $\text{alloc\_epr}$ must be scheduled at timestamp:
+\begin{equation}
+    t_{\text{sched}}(\text{alloc\_epr}) = t_{\text{exec}}(g_{\text{tele}}) - \tau_{\text{epr}},
+    \label{eq:jit_rule}
+\end{equation}
+guaranteeing that the EPR pair arrives at the communication ancillae exactly as the target gate becomes ready, minimizing buffer residence time $\Delta t_{\text{buffer}} \to 0$.
+\end{definitionbox}
+
+% ==============================================================================
+\section{Classical-Quantum Latency Hiding}
+\label{sec:latency_hiding}
+% ==============================================================================
+
+In the Eisert non-local gate protocol (Chapter~\ref{ch:nonlocal_gate_synthesis}), QPU $A$ measures ancilla $e_A$ and must transmit classical bit $m_1$ across the inter-refrigerator network to QPU $B$ to trigger the Pauli correction $\sigma_x^{m_1}$. 
+
+During the classical transit time $\tau_{\text{class}} \approx 50\text{ ns}$ and classical packet handling latency, QPU $B$'s target qubit $q_t$ would ordinarily stall. The DQC scheduling pass performs **Latency Hiding**:
+\begin{enumerate}
+    \item The compiler inspects the dependency DAG for independent local single-qubit gates or Clifford operations on other qubits belonging to QPU $B$.
+    \item These operations are interleaved into the classical communication window $[\,t_{\text{meas}}, \, t_{\text{meas}} + \tau_{\text{class}} + \tau_{\text{rx}}\,]$.
+    \item When the classical bit arrives at the FPGA controller, the pending Pauli correction is applied immediately with zero processor stall time.
+\end{enumerate}
+
+% ==============================================================================
+\section{Dynamical Decoupling (DD) Synthesis}
+\label{sec:dynamical_decoupling}
+% ==============================================================================
+
+When algorithm dependencies make idle waiting times unavoidable (slack $\mathcal{S}(q) > 0$), the compiler protects inactive data qubits and communication buffers by synthesizing **Dynamical Decoupling (DD)** sequences.
+
+\subsection{Pulse Sequence Mechanics}
+Rather than leaving an idle qubit in a static state where low-frequency environmental magnetic noise accumulates phase errors $\Delta \phi = \int_0^t \delta \omega(t') dt'$, the compiler inserts periodic $\pi$-pulse rotations that dynamically invert the qubit state, averaging phase accumulation to zero.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.9, >=stealth]
+        % Qubit wire
+        \draw[line width=1pt] (-5, 0) node[left, font=\small] {$q_{\text{idle}}$} -- (5, 0);
+        
+        % Idle interval delimiter
+        \draw[dashed, color=gray] (-4, -1) -- (-4, 1.2) node[above, font=\tiny] {$t_{\text{start}}$};
+        \draw[dashed, color=gray] (4, -1) -- (4, 1.2) node[above, font=\tiny] {$t_{\text{end}}$ (Gate Ready)};
+        
+        % XY4 Sequence Pulses
+        % Pulse 1: X_pi
+        \draw[fill=compilerteal!30, draw=compilerteal, line width=0.8pt] (-2.8, -0.4) rectangle (-2.2, 0.4);
+        \node[font=\tiny\bfseries] at (-2.5, 0) {$X_\pi$};
+        
+        % Pulse 2: Y_pi
+        \draw[fill=quantumviolet!30, draw=quantumviolet, line width=0.8pt] (-1.3, -0.4) rectangle (-0.7, 0.4);
+        \node[font=\tiny\bfseries] at (-1.0, 0) {$Y_\pi$};
+        
+        % Pulse 3: X_pi
+        \draw[fill=compilerteal!30, draw=compilerteal, line width=0.8pt] (0.7, -0.4) rectangle (1.3, 0.4);
+        \node[font=\tiny\bfseries] at (1.0, 0) {$X_\pi$};
+        
+        % Pulse 4: Y_pi
+        \draw[fill=quantumviolet!30, draw=quantumviolet, line width=0.8pt] (2.2, -0.4) rectangle (2.8, 0.4);
+        \node[font=\tiny\bfseries] at (2.5, 0) {$Y_\pi$};
+        
+        % Delays (tau)
+        \node[font=\tiny, below] at (-3.4, 0) {$\tau$};
+        \node[font=\tiny, below] at (-1.75, 0) {$2\tau$};
+        \node[font=\tiny, below] at (0, 0) {$2\tau$};
+        \node[font=\tiny, below] at (1.75, 0) {$2\tau$};
+        \node[font=\tiny, below] at (3.4, 0) {$\tau$};
+    \end{tikzpicture}
+    \caption{The XY4 Dynamical Decoupling sequence automatically inserted by Pass 4 during idle wait windows. Symmetric spacing of alternating $X_\pi$ and $Y_\pi$ pulses cancels both longitudinal and transverse dephasing components.}
+    \label{fig:xy4_sequence}
+\end{figure}
+
+The DQC compiler synthesizes the universal **XY4** sequence:
+\begin{equation}
+    \text{DD}_{\text{XY4}} = \tau - X_\pi - 2\tau - Y_\pi - 2\tau - X_\pi - 2\tau - Y_\pi - \tau,
+    \label{eq:xy4_formula}
+\end{equation}
+where $\tau$ is chosen to match the total idle duration $\Delta t_{\text{idle}} = 8\tau + 4\tau_\pi$. By alternating between $X$ and $Y$ bases, the sequence corrects arbitrary direction phase and bit-flip errors caused by anisotropic environmental coupling, boosting effective coherence time from $T_2^* \approx 60\,\mu\text{s}$ to $T_2^{\text{DD}} \ge 350\,\mu\text{s}$.
+
+Through JIT allocation, classical latency hiding, and automated dynamical decoupling, Pass 4 ensures that physical distributed quantum hardware executes circuits with the highest possible surviving fidelity.

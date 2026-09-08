@@ -1,0 +1,158 @@
+\chapter{Hardware Target Lowering: QIR, OpenQASM 3.0, and Microwave Pulse Synthesis}
+\label{ch:hardware_qir_openqasm}
+
+\begin{quote}
+\textit{``The ultimate destination of quantum compilation is not an abstract mathematical graph; it is a synchronized sequence of nanosecond microwave pulses driving superconducting Josephson junctions inside a dilution refrigerator at 15 millikelvin.''}
+\end{quote}
+
+After the high-level optimizations, hypergraph partitioning, teleportation synthesis, and coherence-aware scheduling have completed, the compiler must cross the final boundary: translating intermediate representations into executable hardware instructions. In distributed systems, this lowering is fundamentally heterogeneous:
+\begin{enumerate}
+    \item \textbf{Quantum Device Code:} Each QPU must receive instructions encoded in a recognized quantum hardware intermediate representation, such as the LLVM-based **Quantum Intermediate Representation (QIR)** or **OpenQASM 3.0**.
+    \item \textbf{Pulse-Level Calibration:} Quantum gates must be synthesized into analog microwave or laser control envelopes (e.g., DRAG pulses) executed by FPGA-driven Arbitrary Waveform Generators (AWGs).
+    \item \textbf{Classical Orchestration Network:} A distributed synchronization daemon must coordinate classical messaging across high-speed optical links using sub-nanosecond clock synchronization (IEEE 1588 PTP / White Rabbit).
+\end{enumerate}
+
+This chapter details the mechanisms of Pass 5 in the DQC pipeline, examining QIR bytecode emission, OpenQASM 3.0 distributed syntax, microwave waveform synthesis, and the physical control hardware stack.
+
+% ==============================================================================
+\section{The Distributed Quantum Control Architecture}
+\label{sec:hardware_control_stack}
+% ==============================================================================
+
+Figure~\ref{fig:hardware_control_stack} illustrates the multi-tier physical control architecture connecting the DQC compiler to physical qubits residing in cryogenic refrigerators.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.88, >=stealth]
+        % Tier 1: Compiler & Host
+        \draw[rounded corners=2mm, fill=blue!10, draw=darkblue, line width=1pt] (-5.5, 4.2) rectangle (5.5, 5.2);
+        \node[font=\bfseries\color{darkblue}] at (0, 4.85) {Distributed Quantum Compiler (DQC Master Host)};
+        \node[font=\tiny\color{darkblue}] at (0, 4.45) {IR Optimization $\to$ Partitioning $\to$ QIR Generation $\to$ Pulse Calibration Database};
+        
+        % Tier 2: Classical Network
+        \draw[<->, line width=1.5pt, color=compilerteal] (-3, 4.2) -- (-3, 3.2);
+        \draw[<->, line width=1.5pt, color=compilerteal] (3, 4.2) -- (3, 3.2);
+        \node[font=\scriptsize\bfseries\color{compilerteal}, fill=white] at (0, 3.7) {100 GbE Optical RDMA + White Rabbit Clock ($< 10\text{ ps}$ Jitter)};
+        
+        % Tier 3: Local Hardware Controllers (QPU 0 and QPU 1)
+        \draw[rounded corners=2mm, fill=green!10, draw=compilerteal, line width=1pt] (-5.5, 1.8) rectangle (-0.5, 3.2);
+        \node[font=\small\bfseries\color{compilerteal}] at (-3, 2.85) {QPU 0 Master Controller};
+        \node[font=\tiny, align=center] at (-3, 2.3) {UltraScale+ FPGA / SoC\\AWG DACs ($14\text{ GS/s}$) + ADCs};
+        
+        \draw[rounded corners=2mm, fill=green!10, draw=compilerteal, line width=1pt] (0.5, 1.8) rectangle (5.5, 3.2);
+        \node[font=\small\bfseries\color{compilerteal}] at (3, 2.85) {QPU 1 Master Controller};
+        \node[font=\tiny, align=center] at (3, 2.3) {UltraScale+ FPGA / SoC\\AWG DACs ($14\text{ GS/s}$) + ADCs};
+        
+        % Direct FPGA fast classical link for Pauli Fixup
+        \draw[<->, line width=2pt, color=red!70!black] (-0.5, 2.5) -- node[above, font=\tiny\bfseries] {Direct Fast Feedforward ($< 35\text{ ns}$)} (0.5, 2.5);
+        
+        % Tier 4: Cryogenic Attenuation Lines
+        \draw[->, line width=1.5pt, color=gray] (-3, 1.8) -- (-3, 0.4);
+        \draw[->, line width=1.5pt, color=gray] (3, 1.8) -- (3, 0.4);
+        \node[font=\tiny, fill=white] at (-3, 1.1) {Coaxial Cables ($-60\text{ dB}$)};
+        \node[font=\tiny, fill=white] at (3, 1.1) {Coaxial Cables ($-60\text{ dB}$)};
+        
+        % Tier 5: Cryostats (15 mK)
+        \draw[rounded corners=3mm, fill=purple!10, draw=quantumviolet, line width=1pt] (-5.5, -1.8) rectangle (-0.5, 0.4);
+        \node[font=\small\bfseries\color{quantumviolet}] at (-3, 0.05) {Cryostat 0 ($15\text{ mK}$)};
+        \node[font=\tiny, align=center] at (-3, -0.7) {Superconducting QPU Chip\\Transmon Register $q_0 \dots q_7$};
+        
+        \draw[rounded corners=3mm, fill=purple!10, draw=quantumviolet, line width=1pt] (0.5, -1.8) rectangle (5.5, 0.4);
+        \node[font=\small\bfseries\color{quantumviolet}] at (3, 0.05) {Cryostat 1 ($15\text{ mK}$)};
+        \node[font=\tiny, align=center] at (3, -0.7) {Superconducting QPU Chip\\Transmon Register $q_8 \dots q_{15}$};
+        
+        % Cryogenic Quantum Interconnect
+        \draw[<->, line width=2.5pt, color=quantumviolet, decorate, decoration={snake, amplitude=1.5mm, segment length=5mm}] 
+            (-0.5, -0.7) -- node[above=5pt, font=\scriptsize\bfseries] {Cryogenic Microwave Link (EPR Channel)} (0.5, -0.7);
+    \end{tikzpicture}
+    \caption{The end-to-end hardware control stack for distributed quantum computing. The software compiler drives room-temperature FPGA waveform generators, which feed cryogenically attenuated microwave lines to actuate qubits at $15\text{ mK}$, while a sub-nanosecond synchronization fabric coordinates non-local measurements and feedforward fix-ups.}
+    \label{fig:hardware_control_stack}
+\end{figure}
+
+% ==============================================================================
+\section{Quantum Intermediate Representation (QIR) Lowering}
+\label{sec:qir_lowering}
+% ==============================================================================
+
+**QIR** is an LLVM-based intermediate representation established by the QIR Alliance. It expresses quantum instructions as standard LLVM IR function calls into an abstract Quantum Runtime (QIS).
+
+\subsection{DQC QIR Extensions for Distributed Execution}
+Standard QIR specifies functions only for local gates (e.g., `__quantum__qis__cnot`). To support multi-QPU execution, the DQC compiler extends the runtime interface with distributed primitives:
+\begin{enumerate}
+    \item `__dqc__rt__epr_alloc(i32 %src_qpu, i32 %dst_qpu) -> %EPRHandle*`: Non-blocking request to allocate an entangled pair.
+    \item `__dqc__rt__teleport_send(i32 %dst_qpu, %Qubit* %q_ctrl, %EPRHandle* %epr) -> i1`: Executes local CNOT into EPR ancilla, measures, and initiates RDMA transmission of measurement bit $m_1$.
+    \item `__dqc__rt__teleport_recv(i32 %src_qpu, %Qubit* %q_tgt, %EPRHandle* %epr)`: Awaits measurement packet from sending QPU and applies conditional $\sigma_x^{m_1}$ correction.
+\end{enumerate}
+
+\begin{lstlisting}[language=MLIR, caption={Generated QIR LLVM Assembly for Distributed CNOT Receiver}]
+; Lowered QIR LLVM IR for QPU 1 (Target Node)
+define void @execute_nonlocal_cnot(%Qubit* %q_target, %EPRHandle* %epr) {
+entry:
+  ; 1. Local CNOT between EPR ancilla and target data qubit
+  %ancilla_qubit = call %Qubit* @__dqc__rt__get_epr_qubit(%EPRHandle* %epr)
+  call void @__quantum__qis__cnot(%Qubit* %ancilla_qubit, %Qubit* %q_target)
+  
+  ; 2. Hadamard and measurement on EPR ancilla for phase kickback
+  call void @__quantum__qis__h(%Qubit* %ancilla_qubit)
+  %kickback_bit = call %Result* @__quantum__qis__mz(%Qubit* %ancilla_qubit)
+  
+  ; 3. Fast RDMA send of kickback bit back to QPU 0
+  call void @__dqc__rt__send_classical_bit(i32 0, %Result* %kickback_bit)
+  
+  ; 4. Await forward measurement bit m1 from QPU 0
+  %m1 = call i1 @__dqc__rt__await_classical_bit(i32 0)
+  br i1 %m1, label %apply_x, label %done
+
+apply_x:
+  call void @__quantum__qis__x(%Qubit* %q_target)
+  br label %done
+
+done:
+  ret void
+}
+\end{lstlisting}
+
+% ==============================================================================
+\section{Microwave Pulse Synthesis: DRAG Waveforms}
+\label{sec:microwave_pulse_synthesis}
+% ==============================================================================
+
+At the lowest physical layer, gates are microwave pulses driving transmon capacitively coupled transmission lines at the qubit transition frequency $\omega_{01}/2\pi \approx 4\text{--}6\text{ GHz}$.
+
+\subsection{The Derivative Removal by Adiabatic Gate (DRAG) Technique}
+Short pulses ($\tau < 20\text{ ns}$) have broad spectral bandwidths that inadvertently drive unwanted transitions from the computational state $\ket{1}$ to the higher-energy leakage state $\ket{2}$ due to the weak anharmonicity of transmon qubits ($\Delta = \omega_{12} - \omega_{01} \approx -300\text{ MHz}$).
+
+To eliminate leakage, the compiler synthesizes **DRAG (Derivative Removal by Adiabatic Gate)** pulse envelopes. The drive signal $\mathcal{E}(t) = I(t)\cos(\omega_d t) + Q(t)\sin(\omega_d t)$ uses quadrature components:
+\begin{align}
+    I(t) &= \Omega(t) = A \cdot \exp\left( -\frac{(t - \tau/2)^2}{2\sigma^2} \right) - B, \label{eq:drag_i} \\
+    Q(t) &= -\frac{1}{\Delta} \frac{d\Omega(t)}{dt} = \frac{(t - \tau/2)}{\Delta \sigma^2} \Omega(t), \label{eq:drag_q}
+\end{align}
+where $A$ is calibrated to yield a precise rotation angle ($\pi/2$ or $\pi$), and the out-of-phase quadrature $Q(t)$ destructively interferes with transitions to the $\ket{2}$ state.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[scale=0.92, >=stealth]
+        % Axes
+        \draw[->, line width=1pt] (-4.5, 0) -- (4.5, 0) node[right, font=\small] {Time $t$ (ns)};
+        \draw[->, line width=1pt] (0, -2.2) -- (0, 2.8) node[above, font=\small] {Pulse Amplitude};
+        
+        % In-phase Gaussian envelope (I quadrature)
+        \draw[color=compilerteal, line width=2pt, smooth, domain=-3.5:3.5] 
+            plot (\x, {2.2*exp(-\x*\x/2)});
+        \node[font=\footnotesize\bfseries\color{compilerteal}] at (2.5, 2.0) {In-Phase $I(t)$ (Gaussian)};
+        
+        % Quadrature Derivative envelope (Q quadrature)
+        \draw[color=red!80!black, line width=1.8pt, dashed, smooth, domain=-3.5:3.5] 
+            plot (\x, {-1.5*\x*exp(-\x*\x/2)});
+        \node[font=\footnotesize\bfseries\color{red!80!black}] at (-2.5, 1.5) {Derivative $Q(t) \propto -\dot{I}/\Delta$};
+        
+        % Zero crossing annotation
+        \draw (0, 0) node[below right, font=\tiny] {$t=\tau/2$};
+        \draw (-3.5, 0) node[below, font=\tiny] {$0\text{ ns}$};
+        \draw (3.5, 0) node[below, font=\tiny] {$20\text{ ns}$};
+    \end{tikzpicture}
+    \caption{The synthesized DRAG microwave pulse envelope for a $20\text{ ns}$ single-qubit rotation. The in-phase Gaussian envelope $I(t)$ drives the target rotation, while the derivative quadrature $Q(t)$ suppresses phase errors and eliminates leakage into the non-computational $\ket{2}$ state.}
+    \label{fig:drag_pulse_shape}
+\end{figure}
+
+By integrating DRAG synthesis directly into Pass 5, the DQC compiler provides a seamless, verifiable bridge from high-level distributed quantum algorithms down to calibrated hardware microwave waveforms.

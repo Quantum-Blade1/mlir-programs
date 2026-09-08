@@ -1,0 +1,70 @@
+% ==============================================================================
+% Principles of Distributed Quantum Compilers:
+% Architecture, Algorithms, and Multi-QPU Hardware Systems
+% Author: Krish Kumar Sharma
+% ==============================================================================
+
+\documentclass[11pt,twoside,openright,a4paper]{book}
+
+% Load custom typography, environments, packages
+\input{preamble.tex}
+
+\begin{document}
+
+% ------------------------------------------------------------------------------
+% Front Matter
+% ------------------------------------------------------------------------------
+\frontmatter
+
+\input{frontmatter/titlepage.tex}
+\input{frontmatter/dedication.tex}
+\input{frontmatter/preface.tex}
+
+\tableofcontents
+\listoffigures
+\listoftables
+
+% ------------------------------------------------------------------------------
+% Main Matter
+% ------------------------------------------------------------------------------
+\mainmatter
+
+% --- PART I: Physical & Hardware Foundations ---
+\part{Physical and Hardware Foundations of Multi-QPU Quantum Systems}
+\input{chapters/ch01_scaling_ceiling.tex}
+\input{chapters/ch02_hardware_interconnects.tex}
+\input{chapters/ch03_entanglement_physics.tex}
+
+% --- PART II: Mathematical Models & Circuit Distribution Theory ---
+\part{Mathematical Models and Circuit Distribution Theory}
+\input{chapters/ch04_teleportation_vs_cutting.tex}
+\input{chapters/ch05_hypergraph_partitioning.tex}
+\input{chapters/ch06_nonlocal_gate_synthesis.tex}
+
+% --- PART III: Compiler Architecture & Multi-Level IR Design ---
+\part{Compiler Architecture and Multi-Level IR Design}
+\input{chapters/ch07_mlir_compiler_architecture.tex}
+\input{chapters/ch08_five_pass_pipeline.tex}
+\input{chapters/ch09_scheduling_decoherence.tex}
+
+% --- PART IV: Verified Benchmarks & Empirical Evaluation ---
+\part{Empirical Benchmarking, Algorithms, and Runtime Systems}
+\input{chapters/ch10_quantum_algorithm_suite.tex}
+\input{chapters/ch11_empirical_benchmarks.tex}
+\input{chapters/ch12_hardware_qir_openqasm.tex}
+
+% --- PART V: Fault-Tolerant Distributed Quantum Computing ---
+\part{Fault-Tolerant Distributed Quantum Supercomputing}
+\input{chapters/ch13_distributed_qec.tex}
+\input{chapters/ch14_magic_state_distillation.tex}
+\input{chapters/ch15_future_quantum_datacenters.tex}
+
+% ------------------------------------------------------------------------------
+% Back Matter
+% ------------------------------------------------------------------------------
+\backmatter
+
+\bibliographystyle{alpha}
+\bibliography{references}
+
+\end{document}
