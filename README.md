@@ -59,10 +59,16 @@ mlir-programs/
 │   ├── bernstein_vazirani.mlir          # Hidden bitstring parity algorithm (5 qubits)
 │   ├── deutsch_jozsa.mlir               # Single-query balanced/constant test (3 qubits)
 │   ├── ghz_state.mlir                   # 4-qubit Greenberger-Horne-Zeilinger state
+│   ├── draper_qft_adder.mlir            # Draper QFT integer addition A+B (7 qubits)
 │   ├── grover_search.mlir               # 3-qubit database search marking |101> (100%)
+│   ├── quantum_error_correction.mlir    # 3-qubit bit-flip code + syndrome detection (6 qubits)
 │   ├── quantum_fourier_transform.mlir   # 4-qubit distributed QFT subroutine
+│   ├── quantum_phase_estimation.mlir    # Eigenvalue phase estimation QPE (6 qubits)
+│   ├── quantum_random_walk.mlir         # 3D hypercube quantum walk (8 qubits)
 │   ├── quantum_teleportation.mlir       # Full 3-qubit state teleportation protocol
-│   └── superdense_coding.mlir           # 2 classical bits sent via 1 qubit
+│   ├── superdense_coding.mlir           # 2 classical bits sent via 1 qubit
+│   ├── vqe_chemistry_ansatz.mlir        # Variational molecular orbital ansatz (6 qubits)
+│   └── w_state_8qubit.mlir              # 8-qubit robust multipartite W-state
 ├── benchmarks/                          # Multi-QPU distributed compiler stress tests
 │   ├── cross_qpu_cnot.mlir              # Cross-chip CNOT verification benchmark
 │   └── cross_qpu_toffoli.mlir           # Cross-chip Toffoli (CCX) decomposition benchmark
@@ -71,14 +77,14 @@ mlir-programs/
 │   ├── how_dqc_executes_on_hardware.md
 │   └── visual_hardware_journey.md
 └── scripts/                             # Automated testing & verification runners
-    └── run_all.sh                       # 1-command verification suite for all 10 programs
+    └── run_all.sh                       # 1-command verification suite for all 16 programs
 ```
 
 ---
 
 ## 3. Included Quantum Algorithms & Benchmarks
 
-This repository contains a curated, non-duplicate suite of 10 fundamental quantum computing algorithms and multi-QPU communication benchmarks:
+This repository contains a curated, non-duplicate suite of 16 fundamental quantum computing algorithms and multi-QPU communication benchmarks:
 
 | File Name | Algorithm / Protocol | Qubits | QPUs | Dominant Features | Expected Output State |
 | :--- | :--- | :---: | :---: | :--- | :--- |
@@ -92,6 +98,12 @@ This repository contains a curated, non-duplicate suite of 10 fundamental quantu
 | [`quantum_fourier_transform.mlir`](algorithms/quantum_fourier_transform.mlir) | Distributed QFT | 4 | 2 | Controlled-phase $R_z$ cascade & bit-reversal | Verified phase superposition |
 | [`cross_qpu_cnot.mlir`](benchmarks/cross_qpu_cnot.mlir) | Cross-QPU CNOT Benchmark | 4 | 2 | TeleGate synthesis verification | 100% \|1001> |
 | [`cross_qpu_toffoli.mlir`](benchmarks/cross_qpu_toffoli.mlir) | Cross-QPU Toffoli (CCX) | 6 | 2 | Distributed multi-controlled gate | 100% \|101001> |
+| [`quantum_phase_estimation.mlir`](algorithms/quantum_phase_estimation.mlir) | Quantum Phase Estimation | 6 | 2 | Phase kickback & inverse QFT | 100% \|100100> |
+| [`quantum_error_correction.mlir`](algorithms/quantum_error_correction.mlir) | Quantum Error Correction | 6 | 2 | 3-qubit bit-flip code + Toffoli fix | 100% \|111111> |
+| [`vqe_chemistry_ansatz.mlir`](algorithms/vqe_chemistry_ansatz.mlir) | VQE Chemistry Ansatz | 6 | 2 | Ring-topology parameterized rotations | Entangled ground state |
+| [`draper_qft_adder.mlir`](algorithms/draper_qft_adder.mlir) | Draper QFT Adder | 7 | 2 | Quantum phase arithmetic (3 + 2 = 5) | 100% \|0010000> |
+| [`quantum_random_walk.mlir`](algorithms/quantum_random_walk.mlir) | Quantum Walk on Hypercube | 8 | 2 | 3D hypercube ballistic traversal | 4x 25% superposition |
+| [`w_state_8qubit.mlir`](algorithms/w_state_8qubit.mlir) | 8-Qubit W-State Entanglement | 8 | 2 | Robust multipartite entanglement | Distributed 128 amplitudes |
 
 ---
 
@@ -505,6 +517,104 @@ module {
     return
   }
 }
+```
+
+---
+
+
+
+### 11. Quantum Phase Estimation (`quantum_phase_estimation.mlir`) - 6 Qubits
+Estimates the unknown phase $\theta$ of an eigenstate $|\psi\rangle$ under unitary operator $U$ such that $U|\psi\rangle = e^{2\pi i \theta}|\psi\rangle$:
+- **5 Precision Qubits** (%p0 - %p4) prepared in uniform superposition via Hadamards.
+- **1 Target Qubit** initialized in eigenstate $|1\rangle$.
+- Controlled-phase gates apply phase kickback, followed by an inverse QFT to decode the phase into computational basis states.
+
+```mermaid
+flowchart LR
+    p["Precision Register (5 Qubits: |00000>)"] --> H["Hadamard Layer"] --> CtrlU["Controlled-Phase Gates"]
+    t["Target Register (1 Qubit: |1>)"] ------------> CtrlU
+    CtrlU --> IQFT["Inverse QFT"] --> Readout["Phase Output: 100100 (100%)"]
+```
+
+---
+
+### 12. Quantum Error Correction (`quantum_error_correction.mlir`) - 6 Qubits
+Implements an autonomous 3-qubit quantum bit-flip repetition code with non-destructive syndrome measurement:
+- **3 Physical Data Qubits** encode 1 logical qubit $|1\rangle_L \to |111\rangle$.
+- Environmental noise injects a bit-flip Pauli-$X$ error on data qubit $d_1$, corrupting the state to $|101\rangle$.
+- **2 Syndrome Ancillas** extract the parity checks without measuring data qubits directly.
+- An autonomous Toffoli correction flips $d_1$ back, restoring the logical state to $|111\rangle$ with 100% fidelity.
+
+```mermaid
+flowchart TD
+    Encode["Encode Logical |1> -> |111>"] --> Noise["Inject Bit-Flip Error on d1: |101>"]
+    Noise --> Parity["Syndrome Parity Extraction into Ancillas (s0, s1)"]
+    Parity --> Correct["Autonomous Toffoli Correction: CCX(s0, s1, d1)"]
+    Correct --> Restored["Logical State Perfectly Restored to |111>!"]
+```
+
+---
+
+### 13. VQE Molecular Chemistry Ansatz (`vqe_chemistry_ansatz.mlir`) - 6 Qubits
+Simulates a Hardware-Efficient Parameterized Quantum Circuit (PQC) across 6 spatial-spin electron orbitals:
+- Initializes the Hartree-Fock reference state $|110000\rangle$ (2 electrons in 6 orbitals).
+- Parameterized single-qubit $R_y(\theta_i)$ and $R_z(\phi_i)$ layers mix electron configurations.
+- Periodic boundary condition entangling CNOT ring coupler distributes quantum correlations.
+
+```mermaid
+flowchart LR
+    HF["Hartree-Fock State |110000>"] --> Rot1["Parameterized Ry & Rz Rotations"]
+    Rot1 --> Ring["Entangling CNOT Ring Topology (q0..q5)"]
+    Ring --> Rot2["Second Variational Rotation Layer"]
+    Rot2 --> Energy["Molecular Ground-State Energy Output"]
+```
+
+---
+
+### 14. Draper Quantum Fourier Transform Adder (`draper_qft_adder.mlir`) - 7 Qubits
+Computes arithmetic addition $A + B = 3 + 2 = 5$ entirely within the Fourier phase domain:
+- Register $A$ (3 qubits) holds $A = 3$ (`011`).
+- Register $B$ (3 qubits) holds $B = 2$ (`010`).
+- Carry-out qubit ($c_{out}$) handles bit overflow.
+- Controlled phase rotations inject addend $B$ into the phase angles of $A$ without classical ripple-carry delays.
+
+```mermaid
+flowchart LR
+    RegA["Register A (3): |011> (3)"] --> PhaseAdd["Phase Space Addition via QFT"]
+    RegB["Register B (3): |010> (2)"] --> PhaseAdd
+    Carry["Carry Qubit: |0>"] --------> PhaseAdd
+    PhaseAdd --> Sum["Output Sum: A + B = 5 (Binary 101)"]
+```
+
+---
+
+### 15. Quantum Random Walk on a Hypercube (`quantum_random_walk.mlir`) - 8 Qubits
+Simulates a Discrete-Time Quantum Walk (DTQW) on an 8-vertex 3D hypercube:
+- **2 Coin Qubits** determine transition directions along the $X, Y, Z$ axes.
+- **3 Position Qubits** track vertex coordinates $(x, y, z) \in \{0, 1\}^3$.
+- **3 Step Ancillas** capture quantum interference trajectories.
+- Demonstrates quadratic ballistic spreading over classical random diffusion.
+
+```mermaid
+flowchart TD
+    Coin["2 Coin Qubits (Direction)"] --> Walk["Hadamard Coin Toss"]
+    Walk --> Shift["Conditional Multi-Controlled Shift on 3D Cube"]
+    Pos["3 Position Qubits (Vertices)"] --> Shift
+    Shift --> State["Ballistic Quantum Wavefunction Superposition"]
+```
+
+---
+
+### 16. 8-Qubit W-State Multipartite Entanglement (`w_state_8qubit.mlir`) - 8 Qubits
+Synthesizes an 8-qubit W-state:
+$$|W_8\rangle = \frac{1}{\sqrt{8}}(|00000001\rangle + |00000010\rangle + \dots + |10000000\rangle)$$
+- Possesses maximal persistence of entanglement against particle loss: if any single qubit is destroyed or measured, the remaining 7 qubits remain genuinely entangled.
+- Synthesized via controlled rotation cascades distributing a single quantum excitation across all 8 qubits.
+
+```mermaid
+flowchart LR
+    Init["Single Excitation: |00000001>"] --> Cascade["Controlled Ry(pi/2) & CNOT Cascade"]
+    Cascade --> WState["Coherent 8-Qubit W-State Superposition"]
 ```
 
 ---

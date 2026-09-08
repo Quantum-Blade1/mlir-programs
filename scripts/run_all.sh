@@ -32,5 +32,5 @@ for file in benchmarks/*.mlir; do
 done
 
 echo -e "\n${BOLD}${GREEN}======================================================${NC}"
-echo -e "${BOLD}${GREEN}  All 10 Quantum Programs Compiled & Verified Cleanly! ${NC}"
+echo -e "${BOLD}${GREEN}  All 16 Quantum Programs Compiled & Verified Cleanly! ${NC}"
 echo -e "${BOLD}${GREEN}======================================================${NC}"
