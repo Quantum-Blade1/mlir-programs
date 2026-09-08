@@ -240,21 +240,28 @@ flowchart LR
 ## Hardware Component Role Cheat-Sheet
 
 ```mermaid
-mindmap
-  root((Your Mac's Hardware))
-    CPU ALU
-      Calculates qubit bitmasks (1 << qubit)
-      Pairs basis states for gate applications
-    SIMD Vector Units
-      Multiplies amplitudes by unitary matrices
-      Fused Multiply-Add (FMA) in 1 clock cycle
-    L1 Data Cache
-      Holds entire 64-byte statevector
-      Latency: ~1 to 3 clock cycles
-    System RAM
-      Holds process instructions and heap memory
-    Hardware RNG
-      Generates entropy for Born-rule state collapse
-    macOS Kernel & GPU
-      Transfers ASCII text to screen pixels via Metal
+flowchart TD
+    Root["Your Mac's Hardware Architecture"]
+    
+    Root --> CPU_ALU["CPU Integer ALU"]
+    CPU_ALU --> A1["Calculates qubit bitmasks: 1 &lt;&lt; qubit"]
+    CPU_ALU --> A2["Pairs basis states for gate applications"]
+    
+    Root --> SIMD["SIMD / Vector Units"]
+    SIMD --> S1["Multiplies amplitudes by unitary matrices"]
+    SIMD --> S2["Fused Multiply-Add FMA in 1 clock cycle"]
+    
+    Root --> L1["L1 Data Cache"]
+    L1 --> L1_1["Holds entire 64-byte statevector"]
+    L1 --> L1_2["Latency: 1 to 3 clock cycles"]
+    
+    Root --> RAM["System RAM"]
+    RAM --> R1["Stores process instructions and heap buffer"]
+    
+    Root --> RNG["Hardware RNG"]
+    RNG --> RN1["Generates entropy for Born-rule state collapse"]
+    
+    Root --> GPU["macOS Kernel & GPU"]
+    GPU --> G1["Paints ASCII text to screen pixels via Metal"]
 ```
+

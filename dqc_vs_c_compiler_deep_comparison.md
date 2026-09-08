@@ -125,40 +125,49 @@ flowchart LR
 The table below contrasts the fundamental dimensions of classical C compilers versus the DQC compiler, followed by in-depth analyses and dedicated GitHub Mermaid diagrams for each point.
 
 ```mermaid
-mindmap
-  root((Compiler Comparison))
-    Classical C Compiler
-      Imperative Semantics
-      Single-Level LLVM IR
-      Memory Duplication Allowed
-      CPU Latency Minimization
-      Shared-Memory SMP
-      Chaitin Register Coloring
-      Dead Store Elimination
-      Instruction Pipelining
-      Conditional PC Jumps
-      POSIX OS Target
-      Uniform Memory Interconnect
-      Non-Destructive GDB
-      Irreversible Logic
-      Polynomial Heuristics
-      ISO C Standard AST
-    DQC Quantum Compiler
-      Unitary Hilbert Space
-      Multi-Level MLIR Dialects
-      No-Cloning Theorem
-      Inter-QPU Edge-Cut Minimization
-      Quantum Gate Teleportation
-      Physical Qubit Placement
-      Phase & Coherence Preservation
-      Batch Entanglement Pre-Staging
-      Superposition & Feedforward
-      Statevector & QPU Controllers
-      Sparse Couplers & Photonic Links
-      Wavefunction Collapse on Read
-      Reversible Unitary Math
-      NP-Hard Graph Bisection
-      MLIR TableGen Dialects
+flowchart TD
+    Root["Compiler Paradigm Comparison"]
+    
+    subgraph Classical_Compiler ["Classical C Compiler (Clang / GCC)"]
+        direction TB
+        C1["Imperative State Semantics"]
+        C2["Monolithic Single-Level LLVM IR"]
+        C3["Memory Duplication Allowed (memcpy)"]
+        C4["CPU Instruction Latency Minimization"]
+        C5["Shared-Memory Multicore (SMP)"]
+        C6["Chaitin Graph Register Coloring"]
+        C7["Dead Store Elimination"]
+        C8["Instruction Pipeline Scheduling"]
+        C9["Conditional PC Branch Jumps"]
+        C10["POSIX Standard Library Target"]
+        C11["Uniform Bus Interconnect"]
+        C12["Non-Destructive Memory Inspection (GDB)"]
+        C13["Irreversible Bitwise Logic"]
+        C14["Polynomial Time Optimization Passes"]
+        C15["ISO C Standard Syntax & AST"]
+    end
+    
+    subgraph Quantum_Compiler ["DQC Quantum Compiler"]
+        direction TB
+        Q1["Unitary Hilbert Space Superposition"]
+        Q2["Multi-Level MLIR Dialects: dqc to mpi to llvm"]
+        Q3["Quantum No-Cloning Enforcement"]
+        Q4["Inter-QPU Edge-Cut Minimization"]
+        Q5["Quantum Gate Teleportation via EPR Pairs"]
+        Q6["Physical Multi-QPU Partitioning"]
+        Q7["Phase & Entanglement Preservation"]
+        Q8["Batch Entanglement Pre-Staging"]
+        Q9["Coherent Superposition & Feedforward"]
+        Q10["Statevector Simulator & QPU Controllers"]
+        Q11["Sparse 2D Couplers & Photonic Interconnects"]
+        Q12["Wavefunction Collapse on Read"]
+        Q13["Strictly Reversible Unitary Operators"]
+        Q14["NP-Hard Weighted Graph Bisection"]
+        Q15["Declarative MLIR TableGen Dialects"]
+    end
+    
+    Root --> Classical_Compiler
+    Root --> Quantum_Compiler
 ```
 
 ---
