@@ -1,0 +1,6 @@
+.DS_Store
+*.ll
+*.o
+*.out
+*_bin
+build/
