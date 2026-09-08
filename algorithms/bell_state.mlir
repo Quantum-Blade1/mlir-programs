@@ -1,5 +1,5 @@
 module {
-  func.func @my_circuit() {
+  func.func @bell_state() {
     %q0 = dqc.alloc_qubit : !dqc.qubit
     %q1 = dqc.alloc_qubit : !dqc.qubit
 
