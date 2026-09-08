@@ -74,7 +74,7 @@ The advantages of MLIR over traditional monolithic data structures include:
 \label{sec:tablegen_spec}
 % ==============================================================================
 
-In MLIR, dialects are formally defined using TableGen (`.td`) files. Below is the exact structural specification of the `dqc` dialect.
+In MLIR, dialects are formally defined using TableGen (\texttt{.td}) files. Below is the exact structural specification of the \texttt{dqc} dialect.
 
 \subsection{Dialect Declaration}
 \begin{lstlisting}[language=MLIR, caption={TableGen definition of the DQC Dialect (DQCDialect.td)}]
@@ -95,9 +95,9 @@ def DQC_Dialect : Dialect {
 \subsection{Custom Quantum Types}
 Traditional LLVM IR operates on integers and floating-point registers. The DQC dialect introduces domain-specific first-class types:
 \begin{enumerate}
-    \item `!dqc.qubit`: Represents a physical or logical two-level quantum state handle.
-    \item `!dqc.epr_handle`: Represents an allocated entangled bipartite state shared between two QPUs.
-    \item `!dqc.qpu_id`: Represents a physical quantum processor identifier.
+    \item \texttt{!dqc.qubit}: Represents a physical or logical two-level quantum state handle.
+    \item \texttt{!dqc.epr\_handle}: Represents an allocated entangled bipartite state shared between two QPUs.
+    \item \texttt{!dqc.qpu\_id}: Represents a physical quantum processor identifier.
 \end{enumerate}
 
 \begin{lstlisting}[language=MLIR, caption={TableGen specification of custom DQC types}]
@@ -115,7 +115,7 @@ def DQC_EPRHandleType : TypeDef<DQC_Dialect, "EPRHandle"> {
 \end{lstlisting}
 
 \subsection{Operation Declarations}
-Operations in DQC are defined with strict operand and result invariants. Below is the specification of the fundamental non-local operation `dqc.telegate`:
+Operations in DQC are defined with strict operand and result invariants. Below is the specification of the fundamental non-local operation \texttt{dqc.telegate}:
 
 \begin{lstlisting}[language=MLIR, caption={TableGen specification of the distributed Telegate operation}]
 def DQC_TeleGateOp : DQC_Op<"telegate", [
@@ -148,7 +148,7 @@ def DQC_TeleGateOp : DQC_Op<"telegate", [
 A central innovation of the DQC dialect is its reconciliation of **Static Single Assignment (SSA)** with the **No-Cloning Theorem** of quantum mechanics.
 
 \subsection{The Quantum Cloning Hazard in Classical SSA}
-In classical SSA (e.g., standard LLVM IR), a computed value `%x` can be read arbitrarily many times by downstream operations:
+In classical SSA (e.g., standard LLVM IR), a computed value \texttt{\%x} can be read arbitrarily many times by downstream operations:
 \begin{lstlisting}[language=MLIR]
 // Classical SSA - Perfectly Legal (Value Duplication)
 %x = arith.addi %a, %b : i32
@@ -156,7 +156,7 @@ In classical SSA (e.g., standard LLVM IR), a computed value `%x` can be read arb
 %y2 = arith.subi %x, %d : i32  // Multiple uses of %x
 \end{lstlisting}
 
-If applied naively to quantum registers, multiple reads of a qubit SSA value `%q` would imply quantum state cloning:
+If applied naively to quantum registers, multiple reads of a qubit SSA value \texttt{\%q} would imply quantum state cloning:
 \begin{lstlisting}[language=MLIR]
 // ILLEGAL QUANTUM CODE: Violates No-Cloning Theorem!
 %q_out1 = dqc.h %q : !dqc.qubit
@@ -167,8 +167,8 @@ If applied naively to quantum registers, multiple reads of a qubit SSA value `%q
 To guarantee physical validity, DQC enforces **Linear SSA Semantics**:
 \begin{enumerate}
     \item Every quantum operation consumes its input SSA values and produces fresh output SSA values.
-    \item An SSA value of type `!dqc.qubit` must have **exactly one consumer operation** in the dominance frontier.
-    \item The MLIR operation verifier recursively inspects the `use_empty()` status of consumed handles, raising a compilation error if an active qubit handle is referenced more than once.
+    \item An SSA value of type \texttt{!dqc.qubit} must have **exactly one consumer operation** in the dominance frontier.
+    \item The MLIR operation verifier recursively inspects the \texttt{use\_empty()} status of consumed handles, raising a compilation error if an active qubit handle is referenced more than once.
 \end{enumerate}
 
 \begin{figure}[htbp]

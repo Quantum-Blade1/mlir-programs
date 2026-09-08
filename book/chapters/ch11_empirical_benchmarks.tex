@@ -22,7 +22,7 @@ All compiler benchmarks were executed on a dedicated high-performance host works
 \begin{itemize}
     \item \textbf{Compute Cores:} 12-core high-performance ARM64 execution pipeline with NEON 128-bit SIMD vector engines.
     \item \textbf{Memory Hierarchy:} 32 KB L1 instruction + 32 KB L1 data cache per core, 32 MB shared Level 2 system cache, and 48 GB Unified LPDDR5 memory with $200\text{ GB/s}$ sustained memory bandwidth.
-    \item \textbf{Compiler Toolchain:} LLVM/MLIR 18.x compiled with `-O3 -flto -march=native`.
+    \item \textbf{Compiler Toolchain:} LLVM/MLIR 18.x compiled with \texttt{-O3 -flto -march=native}.
     \item \textbf{Workload Suite:} 14 canonical algorithmic circuits (Chapter~\ref{ch:quantum_algorithm_suite}) scaled up to $n = 128$ logical qubits and $G = 100,000$ operations.
 \end{itemize}
 

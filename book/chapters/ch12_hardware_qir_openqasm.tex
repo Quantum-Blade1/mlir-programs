@@ -77,11 +77,11 @@ Figure~\ref{fig:hardware_control_stack} illustrates the multi-tier physical cont
 **QIR** is an LLVM-based intermediate representation established by the QIR Alliance. It expresses quantum instructions as standard LLVM IR function calls into an abstract Quantum Runtime (QIS).
 
 \subsection{DQC QIR Extensions for Distributed Execution}
-Standard QIR specifies functions only for local gates (e.g., `__quantum__qis__cnot`). To support multi-QPU execution, the DQC compiler extends the runtime interface with distributed primitives:
+Standard QIR specifies functions only for local gates (e.g., \texttt{\_\_quantum\_\_qis\_\_cnot}). To support multi-QPU execution, the DQC compiler extends the runtime interface with distributed primitives:
 \begin{enumerate}
-    \item `__dqc__rt__epr_alloc(i32 %src_qpu, i32 %dst_qpu) -> %EPRHandle*`: Non-blocking request to allocate an entangled pair.
-    \item `__dqc__rt__teleport_send(i32 %dst_qpu, %Qubit* %q_ctrl, %EPRHandle* %epr) -> i1`: Executes local CNOT into EPR ancilla, measures, and initiates RDMA transmission of measurement bit $m_1$.
-    \item `__dqc__rt__teleport_recv(i32 %src_qpu, %Qubit* %q_tgt, %EPRHandle* %epr)`: Awaits measurement packet from sending QPU and applies conditional $\sigma_x^{m_1}$ correction.
+    \item \texttt{\_\_dqc\_\_rt\_\_epr\_alloc(i32 \%src\_qpu, i32 \%dst\_qpu) -> \%EPRHandle*}: Non-blocking request to allocate an entangled pair.
+    \item \texttt{\_\_dqc\_\_rt\_\_teleport\_send(i32 \%dst\_qpu, \%Qubit* \%q\_ctrl, \%EPRHandle* \%epr) -> i1}: Executes local CNOT into EPR ancilla, measures, and initiates RDMA transmission of measurement bit $m_1$.
+    \item \texttt{\_\_dqc\_\_rt\_\_teleport\_recv(i32 \%src\_qpu, \%Qubit* \%q\_tgt, \%EPRHandle* \%epr)}: Awaits measurement packet from sending QPU and applies conditional $\sigma_x^{m_1}$ correction.
 \end{enumerate}
 
 \begin{lstlisting}[language=MLIR, caption={Generated QIR LLVM Assembly for Distributed CNOT Receiver}]

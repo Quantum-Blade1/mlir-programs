@@ -5,7 +5,7 @@
 \textit{``Compilation is not a monolithic leap from high-level algorithm to hardware pulses; it is an invariant-preserving journey through five progressive transformation stages.''}
 \end{quote}
 
-The core execution engine of the DQC compiler is structured as a five-stage progressive optimization pipeline implemented using the MLIR `PassManager` architecture. Each pass addresses a distinct mathematical and physical abstraction layer, enforcing strict preconditions and yielding formal postconditions. 
+The core execution engine of the DQC compiler is structured as a five-stage progressive optimization pipeline implemented using the MLIR \texttt{PassManager} architecture. Each pass addresses a distinct mathematical and physical abstraction layer, enforcing strict preconditions and yielding formal postconditions. 
 
 This chapter examines the mechanical inner workings of each of the five compilation passes:
 \begin{enumerate}
@@ -65,7 +65,7 @@ This chapter examines the mechanical inner workings of each of the five compilat
 \label{sec:pass1_ingestion}
 % ==============================================================================
 
-The ingestion pass parses external input representations (OpenQASM 3.0, QIR bytecode, or high-level algorithm definitions) and emits an unpartitioned monolithic `dqc` MLIR module.
+The ingestion pass parses external input representations (OpenQASM 3.0, QIR bytecode, or high-level algorithm definitions) and emits an unpartitioned monolithic \texttt{dqc} MLIR module.
 
 \subsection{Peephole Algebraic Reductions}
 Before partitioning, Pass 1 executes local peephole rewrites to minimize gate depth and eliminate redundant operators. The pass applies standard group-theoretic identities:
@@ -80,7 +80,7 @@ Before partitioning, Pass 1 executes local peephole rewrites to minimize gate de
 \textbf{Exit Invariants:}
 \begin{itemize}
     \item Universal basis reduction: All operations lowered to $\{R_x, R_y, R_z, H, \text{CNOT}, \text{CZ}, \text{Measure}\}$.
-    \item Linear SSA verification: Single use of every `!dqc.qubit` SSA value.
+    \item Linear SSA verification: Single use of every \texttt{!dqc.qubit} SSA value.
     \item Dead gate elimination completed.
 \end{itemize}
 \end{passbox}
@@ -111,7 +111,7 @@ After KaHyPar computes the balanced partition $\pi: Q \to \{1, \dots, M\}$, Pass
 \label{sec:pass3_synthesis}
 % ==============================================================================
 
-Pass 3 traverses the IR and inspects every multi-qubit operation. If the source operands have conflicting `qpu.id` attributes, the operation is flagged as non-local.
+Pass 3 traverses the IR and inspects every multi-qubit operation. If the source operands have conflicting \texttt{qpu.id} attributes, the operation is flagged as non-local.
 
 \begin{figure}[htbp]
     \centering
@@ -142,7 +142,7 @@ Pass 3 traverses the IR and inspects every multi-qubit operation. If the source 
     \label{fig:pass3_pattern_rewrite}
 \end{figure}
 
-The MLIR rewrite pattern matches against `dqc.cnot`, allocates an EPR handle via `dqc.distribute_epr`, and inserts the required local CNOTs, measurements, and classical fix-up operations.
+The MLIR rewrite pattern matches against \texttt{dqc.cnot}, allocates an EPR handle via \texttt{dqc.distribute\_epr}, and inserts the required local CNOTs, measurements, and classical fix-up operations.
 
 % ==============================================================================
 \section{Pass 4: Coherence-Aware DAG Scheduling}

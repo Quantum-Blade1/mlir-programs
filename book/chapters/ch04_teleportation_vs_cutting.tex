@@ -167,20 +167,20 @@ The algebraic derivation proceeds as follows:
     \end{equation}
     where $\ket{\Phi^+} = \frac{1}{\sqrt{2}}(\ket{00} + \ket{11})$ is pre-shared between Node $A$ and Node $B$.
     
-    \item **Local Entangling Operations:**
+    \item \textbf{Local Entangling Operations:}
     \begin{itemize}
         \item Node $A$ applies local $\text{CNOT}(\text{Control}, EPR_A)$.
         \item Node $B$ applies local $\text{CNOT}(EPR_B, \text{Target})$.
     \end{itemize}
     
-    \item **Local Measurements & Classical Feedforward:**
+    \item \textbf{Local Measurements and Classical Feedforward:}
     \begin{itemize}
         \item Node $A$ measures $EPR_A$ in the Hadamard (X) basis, yielding classical bit $c_0 \in \{0, 1\}$.
         \item Node $B$ measures $EPR_B$ in the computational (Z) basis, yielding classical bit $c_1 \in \{0, 1\}$.
         \item Node $A$ transmits $c_0$ to Node $B$ via a classical network message.
     \end{itemize}
     
-    \item **Conditional Pauli Correction:**
+    \item \textbf{Conditional Pauli Correction:}
     Node $B$ applies the conditional unitary correction:
     \begin{equation}
         \hat{U}_{\text{corr}} = \hat{X}^{c_1} \hat{Z}^{c_0}
