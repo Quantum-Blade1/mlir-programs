@@ -1,19 +1,22 @@
 \begin{titlepage}
-    \centering
-    
-    % Top Series Banner
     \vspace*{-1.0cm}
-    {\scshape\bfseries\color{compilerteal}\small Graduate Texts in Quantum Computer Science \& Engineering \ $\cdot$ \ Volume I\par}
-    \vspace{0.3cm}
-    {\color{darkblue}\rule{\textwidth}{1.8pt}}\par
-    \vspace{0.6cm}
+    
+    % Top Right Edition Badge
+    \begin{flushright}
+        {\scshape\bfseries\color{compilerteal}\small FIRST EDITION}
+    \end{flushright}
+    \vspace{-0.1cm}
+    {\color{darkblue}\rule{\textwidth}{1.5pt}}\par
+    
+    \centering
+    \vspace{0.8cm}
     
     % Main Book Title
-    {\fontsize{26}{32}\selectfont\bfseries\color{darkblue} Principles of Distributed\\[0.25em] Quantum Compilers\par}
+    {\fontsize{27}{33}\selectfont\bfseries\color{darkblue} Principles of Distributed\\[0.25em] Quantum Compilers\par}
     \vspace{0.4cm}
     {\large\bfseries\color{quantumviolet} Architecture, Algorithms, and Multi-QPU Hardware Systems\par}
     
-    \vspace{0.6cm}
+    \vspace{0.8cm}
     
     % Central Hero Quantum Interconnect Artwork
     \begin{tikzpicture}[scale=0.92, >=stealth]
@@ -48,11 +51,11 @@
         % QPU Cluster C (Bottom-Left - Magic State Factory)
         \begin{scope}[shift={(-4.0, -2.0)}]
             \draw[fill=examplegreen!8, draw=examplegreen!80!black, line width=1.2pt, rounded corners=2.5mm] (-1.4, -0.85) rectangle (1.4, 0.85);
-            \node[font=\scriptsize\bfseries\color{examplegreen!80!black}] at (0, 0.52) {Factory Module $\mathcal{T}$};
-            \foreach \x/\y in {-0.6/0.0, 0.0/0.0, 0.6/0.0, 0.0/-0.42} {
+            \node[font=\scriptsize\bfseries\color{examplegreen!80!black}] at (0, 0.45) {State Factory $\mathcal{T}$};
+            \foreach \x/\y in {-0.6/-0.05, 0.0/-0.05, 0.6/-0.05, 0.0/-0.45} {
                 \draw[fill=examplegreen!40, draw=examplegreen!90!black] (\x, \y) circle (2.2pt);
             }
-            \draw[line width=0.5pt, color=examplegreen!70!black] (-0.6,0) -- (0,0) -- (0.6,0) -- (0,-0.42) -- (-0.6,0);
+            \draw[line width=0.5pt, color=examplegreen!70!black] (-0.6,-0.05) -- (0,-0.05) -- (0.6,-0.05) -- (0,-0.45) -- (-0.6,-0.05);
             \node[font=\tiny\bfseries\color{examplegreen!80!black}] at (0, -0.65) {$\ket{T}$ Distillation};
         \end{scope}
         
@@ -88,28 +91,20 @@
         \node[font=\tiny\color{gray!60}] at (4.8, 0.0) {$\mathfrak{su}(4) = \mathfrak{k} \oplus \mathfrak{p}$};
     \end{tikzpicture}
     
-    \vspace{0.7cm}
+    \vspace{1.0cm}
     
-    % Author & Affiliation Block
+    % Author & Contact Block (Clean, Honest, Personal)
     {\Large\textbf{\color{darkblue} Krish Kumar Sharma}\par}
-    \vspace{0.15cm}
+    \vspace{0.2cm}
     {\small\texttt{krishkumarsharma72@gmail.com}\par}
-    \vspace{0.05cm}
-    {\footnotesize\color{gray!80!black} Advanced Quantum Compiler \& Systems Architecture Group\par}
+    \vspace{0.15cm}
+    {\normalsize\color{darkblue!80} Bengaluru, India\par}
     
     \vfill
     
-    % Publisher Emblem & Footer
-    \begin{center}
-        \begin{tikzpicture}
-            \draw[color=compilerteal, line width=1.2pt] (-4.5, 0) -- (4.5, 0);
-            \node[fill=white, inner sep=4pt] at (0, 0) {\small\bfseries\color{quantumviolet} QUANTUM-BLADE ACADEMIC PRESS};
-        \end{tikzpicture}
-    \end{center}
-    
-    \vspace{0.15cm}
-    {\footnotesize\scshape Cambridge $\cdot$ New York $\cdot$ Tokyo $\cdot$ Bengaluru\par}
-    \vspace{0.15cm}
-    {\scriptsize\color{gray} First Edition \ $\cdot$ \ \today\par}
-    \vspace*{0.2cm}
+    % Simple Elegant Footer
+    {\color{compilerteal}\rule{0.35\textwidth}{1pt}}\par
+    \vspace{0.3cm}
+    {\small\color{gray!70!black} \today\par}
+    \vspace*{0.3cm}
 \end{titlepage}
