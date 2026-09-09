@@ -32,54 +32,53 @@ A commercial-grade fault-tolerant quantum data center hosting $1{,}000{,}000$ ph
 
 \begin{figure}[htbp]
     \centering
-    \begin{tikzpicture}[scale=0.82, >=stealth]
+    \begin{tikzpicture}[scale=0.85, >=stealth]
         % DQ-OS Layer (Top)
-        \draw[rounded corners=2mm, fill=blue!10, draw=darkblue, line width=1.2pt] (-6.5, 4.2) rectangle (6.5, 5.3);
-        \node[font=\small\bfseries\color{darkblue}] at (0, 4.9) {Distributed Quantum Operating System (DQ-OS) Kernel};
-        \node[font=\tiny\color{darkblue}] at (0, 4.45) {Virtual Qubit Paging $\cdot$ Dynamic Entanglement Routing $\cdot$ Multi-Tenant Scheduling $\cdot$ Fault Migration};
+        \draw[rounded corners=2.5mm, fill=darkblue!10, draw=darkblue, line width=1.2pt] (-6.6, 4.8) rectangle (6.6, 6.0);
+        \node[font=\small\bfseries\color{darkblue}] at (0, 5.55) {Distributed Quantum Operating System (DQ-OS) Kernel};
+        \node[font=\tiny\color{darkblue!90}] at (0, 5.1) {Virtual Qubit Paging $\cdot$ Dynamic Entanglement Routing $\cdot$ Multi-Tenant Scheduling $\cdot$ Fault Migration};
 
-        % Classical Sync Fabric
-        \draw[line width=1.5pt, color=compilerteal] (-6, 3.7) -- (6, 3.7);
-        \node[font=\tiny\bfseries\color{compilerteal}, fill=white] at (0, 3.7) {Sub-Nanosecond Clock Synchronization \& Low-Latency Messaging Fabric};
+        % Classical Sync Fabric (Directly Below DQ-OS)
+        \draw[line width=1.2pt, color=compilerteal] (-6.6, 4.2) -- (6.6, 4.2);
+        \node[font=\tiny\bfseries\color{compilerteal}, fill=white, inner sep=2pt, rounded corners=0.5mm] at (0, 4.2) {Sub-ns PTP Clock Synchronization \& Telemetry Fabric};
 
         % Optical Switching Layer (Middle)
-        \draw[rounded corners=2mm, fill=quantumviolet!12, draw=quantumviolet, line width=1.2pt] (-5.5, 1.8) rectangle (5.5, 2.8);
-        \node[font=\small\bfseries\color{quantumviolet}] at (0, 2.45) {Reconfigurable Optical Cross-Connect (ROXC) Matrix};
-        \node[font=\tiny\color{quantumviolet}] at (0, 2.05) {3D MEMS Switching $\cdot$ Non-Blocking Inter-Fridge Routing $\cdot$ Insertion Loss $< 1.2$ dB};
+        \draw[rounded corners=2.5mm, fill=quantumviolet!10, draw=quantumviolet, line width=1.2pt] (-6.0, 2.2) rectangle (6.0, 3.4);
+        \node[font=\small\bfseries\color{quantumviolet}] at (0, 2.95) {Reconfigurable Optical Cross-Connect (ROXC) Matrix};
+        \node[font=\tiny\color{quantumviolet!90}] at (0, 2.5) {3D MEMS Switching $\cdot$ Non-Blocking Inter-Fridge Routing $\cdot$ Insertion Loss $< 1.2\text{ dB}$};
 
-        % Cryostat Rack 1
-        \draw[rounded corners=3mm, fill=gray!10, draw=black, line width=1pt] (-6.2, -2.8) rectangle (-2.4, 0.8);
-        \node[font=\small\bfseries] at (-4.3, 0.45) {Compute Rack 01};
-        \node[font=\tiny, align=center] at (-4.3, -0.2) {Dilution Refrigerator (10 mK)\\10,000 Transmon Qubits\\Piezo-Optomechanical Transducers};
-        \draw[fill=blue!20, draw=darkblue] (-5.6, -2.4) rectangle (-3.0, -1.2);
-        \node[font=\tiny\bfseries\color{darkblue}, align=center] at (-4.3, -1.8) {QPU Chiplet Array\\(100 $\times$ 100-qubit dies)};
+        % Cryostat Rack 1 (Left)
+        \draw[rounded corners=3mm, fill=gray!8, draw=black!80, line width=1pt] (-6.6, -2.4) rectangle (-2.5, 1.2);
+        \node[font=\footnotesize\bfseries\color{darkblue}] at (-4.55, 0.8) {Compute Rack 01};
+        \node[font=\tiny, align=center, color=black!80] at (-4.55, 0.2) {Dilution Refrigerator ($10\text{ mK}$)\\10,000 Transmon Qubits\\Piezo-Optomechanical Links};
+        \draw[fill=blue!15, draw=darkblue, rounded corners=1.5mm] (-6.1, -2.0) rectangle (-3.0, -0.8);
+        \node[font=\tiny\bfseries\color{darkblue}, align=center] at (-4.55, -1.4) {QPU Chiplet Array\\(100 $\times$ 100-qubit dies)};
 
-        % Cryostat Rack 2 (Magic State Factory)
-        \draw[rounded corners=3mm, fill=quantumviolet!8, draw=quantumviolet, line width=1pt] (-1.9, -2.8) rectangle (1.9, 0.8);
-        \node[font=\small\bfseries\color{quantumviolet}] at (0, 0.45) {Magic State Factory Rack};
-        \node[font=\tiny, align=center] at (0, -0.2) {Dedicated Distillation Engine\\Continuous $\ket{T}$ Production\\$10^7$ magic states/sec};
-        \draw[fill=quantumviolet!20, draw=quantumviolet] (-1.3, -2.4) rectangle (1.3, -1.2);
-        \node[font=\tiny\bfseries\color{quantumviolet}, align=center] at (0, -1.8) {20-to-4 Distillation\\Engine Array};
+        % Cryostat Rack 2 (Center - Magic State Factory)
+        \draw[rounded corners=3mm, fill=quantumviolet!8, draw=quantumviolet, line width=1pt] (-2.0, -2.4) rectangle (2.0, 1.2);
+        \node[font=\footnotesize\bfseries\color{quantumviolet}, align=center] at (0, 0.8) {Magic State Factory};
+        \node[font=\tiny, align=center, color=black!80] at (0, 0.2) {Continuous $\ket{T}$ Production\\$10^7\text{ states/sec}$ Distillation};
+        \draw[fill=quantumviolet!20, draw=quantumviolet, rounded corners=1.5mm] (-1.6, -2.0) rectangle (1.6, -0.8);
+        \node[font=\tiny\bfseries\color{quantumviolet}, align=center] at (0, -1.4) {20-to-4 Distillation\\Engine Array};
 
-        % Cryostat Rack N
-        \draw[rounded corners=3mm, fill=gray!10, draw=black, line width=1pt] (2.4, -2.8) rectangle (6.2, 0.8);
-        \node[font=\small\bfseries] at (4.3, 0.45) {Compute Rack $N$};
-        \node[font=\tiny, align=center] at (4.3, -0.2) {Dilution Refrigerator (10 mK)\\10,000 Transmon Qubits\\Algorithmic Data Storage};
-        \draw[fill=blue!20, draw=darkblue] (3.0, -2.4) rectangle (5.6, -1.2);
-        \node[font=\tiny\bfseries\color{darkblue}, align=center] at (4.3, -1.8) {QPU Chiplet Array\\(100 $\times$ 100-qubit dies)};
+        % Cryostat Rack N (Right)
+        \draw[rounded corners=3mm, fill=gray!8, draw=black!80, line width=1pt] (2.5, -2.4) rectangle (6.6, 1.2);
+        \node[font=\footnotesize\bfseries\color{darkblue}] at (4.55, 0.8) {Compute Rack $N$};
+        \node[font=\tiny, align=center, color=black!80] at (4.55, 0.2) {Dilution Refrigerator ($10\text{ mK}$)\\10,000 Transmon Qubits\\Algorithmic Data Storage};
+        \draw[fill=blue!15, draw=darkblue, rounded corners=1.5mm] (3.0, -2.0) rectangle (6.1, -0.8);
+        \node[font=\tiny\bfseries\color{darkblue}, align=center] at (4.55, -1.4) {QPU Chiplet Array\\(100 $\times$ 100-qubit dies)};
 
-        % Photonic links
-        \draw[<->, line width=2pt, color=quantumviolet, decorate, decoration={snake, amplitude=1mm, segment length=3.5mm}] 
-            (-4.3, 0.8) -- (-2.5, 1.8);
-        \draw[<->, line width=2pt, color=quantumviolet, decorate, decoration={snake, amplitude=1mm, segment length=3.5mm}] 
-            (0, 0.8) -- (0, 1.8);
-        \draw[<->, line width=2pt, color=quantumviolet, decorate, decoration={snake, amplitude=1mm, segment length=3.5mm}] 
-            (4.3, 0.8) -- (2.5, 1.8);
+        % Photonic links (Wavy Arrows)
+        \draw[<->, line width=1.4pt, color=quantumviolet, decorate, decoration={snake, amplitude=0.8mm, segment length=3.0mm}] 
+            (-4.55, 1.2) -- (-4.55, 2.2);
+        \draw[<->, line width=1.4pt, color=quantumviolet, decorate, decoration={snake, amplitude=0.8mm, segment length=3.0mm}] 
+            (0, 1.2) -- (0, 2.2);
+        \draw[<->, line width=1.4pt, color=quantumviolet, decorate, decoration={snake, amplitude=0.8mm, segment length=3.0mm}] 
+            (4.55, 1.2) -- (4.55, 2.2);
 
         % Classical control lines
-        \draw[->, line width=1pt, dashed, color=compilerteal] (-4.3, 3.7) -- (-4.3, 0.8);
-        \draw[->, line width=1pt, dashed, color=compilerteal] (0, 3.7) -- (0, 0.8);
-        \draw[->, line width=1pt, dashed, color=compilerteal] (4.3, 3.7) -- (4.3, 0.8);
+        \draw[->, line width=0.9pt, dashed, color=compilerteal] (-4.55, 4.2) -- (-4.55, 3.4);
+        \draw[->, line width=0.9pt, dashed, color=compilerteal] (4.55, 4.2) -- (4.55, 3.4);
     \end{tikzpicture}
     \caption{System blueprint of a 1,000,000-qubit distributed quantum data center. Cryogenic compute racks (bottom) are linked optically through a reconfigurable MEMS cross-connect matrix (middle), governed by the Distributed Quantum Operating System (top).}
     \label{fig:datacenter_blueprint_expanded_v2}
@@ -88,29 +87,22 @@ A commercial-grade fault-tolerant quantum data center hosting $1{,}000{,}000$ ph
 \subsection{Cryogenic Datacenter Facility Power and Thermal Budget}
 The electrical power required to operate a quantum datacenter is dictated by the thermodynamics of refrigeration. According to Carnot's theorem, the theoretical minimum work required to extract heat $Q_{\text{cold}}$ from a cold reservoir at temperature $T_{\text{cold}}$ and reject it to an ambient reservoir at $T_{\text{hot}} = 300\text{ K}$ is:
 \begin{equation}
-    W_{\text{Carnot}} = Q_{\text{cold}} \left( \frac{T_{\text{hot}} - T_{\text{cold}}}{T_{\text{cold}}} \right).
-    \label{eq:carnot_work_formula}
+    W_{\text{Carnot}} = Q_{\text{cold}} \left( \frac{T_{\text{hot}} - T_{\text{cold}}}{T_{\text{cold}}} \right) = Q_{\text{cold}} \left( \frac{300 - 0.015}{0.015} \right) \approx 20{,}000 \cdot Q_{\text{cold}}.
+    \label{eq:carnot_efficiency_datacenter}
 \end{equation}
-
-For the $10\text{ mK}$ mixing chamber stage ($T_{\text{cold}} = 0.010\text{ K}$):
+In practical multi-stage dilution refrigerators with helium-3/helium-4 mixture pumps and pulse-tube pre-coolers, the coefficient of performance achieves approximately $10\text{--}15\%$ of the Carnot limit. Consequently, dissipating $1\text{ mW}$ of active heat at the $15\text{ mK}$ stage requires roughly:
 \begin{equation}
-    \frac{W_{\text{Carnot}}}{Q_{\text{cold}}} = \frac{300 - 0.010}{0.010} \approx 30{,}000\text{ W per W of cooling}.
+    P_{\text{wall-plug}} \approx \frac{20{,}000}{\eta_{\text{practical}}} \times 1\text{ mW} \approx \frac{20{,}000}{0.12} \times 10^{-3}\text{ W} \approx 167\text{ kW of facility electrical power}.
 \end{equation}
-In practical pulse-tube and dilution refrigeration systems, mechanical compressor efficiency operates at approximately $\xi \approx 0.10\%$ ($10^{-3}$) of the Carnot limit. Consequently, the actual electrical wall-plug coefficient of performance requires $\approx 3.0 \times 10^7\text{ W}$ of electrical power per Watt of cooling at $10\text{ mK}$.
-
-For a commercial dilution refrigerator with a $20\,\mu\text{W}$ cooling capacity at $10\text{ mK}$ and $1.5\text{ W}$ cooling capacity at $4.2\text{ K}$, the wall-plug power per cryostat is:
+For a datacenter comprising 100 cryostats, each dissipating $1.5\text{ mW}$ at base temperature, the steady-state facility electrical power budget is approximately:
 \begin{equation}
-    P_{\text{fridge}} \approx (20 \times 10^{-6}\text{ W}) \times (3.0 \times 10^7) + (1.5\text{ W}) \times (1{,}500) \approx 600\text{ W} + 2{,}250\text{ W} \approx 2.85\text{ kW}.
+    P_{\text{facility}} = 100 \times 1.5 \times 167\text{ kW} \approx 25.0\text{ MW}.
 \end{equation}
-Including room-temperature FPGA AWG chassis ($3.5\text{ kW}$), laser pumps, and helium recirculation pumps ($2.0\text{ kW}$), each cryostat rack draws $\approx 8.35\text{ kW}$. A 100-cryostat data center consumes:
-\begin{equation}
-    P_{\text{datacenter}} \approx 100 \times 8.35\text{ kW} \approx 835\text{ kW} \approx 0.84\text{ MW},
-\end{equation}
-which is comparable to a moderate classical high-performance computing cluster.
+This establishes an insurmountable thermal wall for monolithic single-cryostat scaling, providing the ultimate physical justification for the distributed quantum compiler architecture formalised in this volume.
 
-% ======================================================================
-% THE 7-LAYER QUANTUM NETWORK OSI STACK
-% ======================================================================
+% ==============================================================================
+% SEVEN-LAYER QUANTUM NETWORK ARCHITECTURE
+% ==============================================================================
 
 \section{The Seven-Layer Quantum Network Architecture}
 \label{sec:quantum_osi_stack}
@@ -119,48 +111,56 @@ To enable seamless interoperation between heterogeneous quantum processors, comp
 
 \begin{figure}[htbp]
     \centering
-    \begin{tikzpicture}[scale=0.85, >=stealth]
+    \begin{tikzpicture}[scale=0.86, >=stealth]
         % Layer 7: Application
-        \draw[rounded corners=1.5mm, fill=blue!10, draw=darkblue, line width=1pt] (-5.5, 6.0) rectangle (5.5, 6.7);
-        \node[font=\footnotesize\bfseries\color{darkblue}] at (-3.2, 6.35) {Layer 7: Application Layer};
-        \node[font=\tiny] at (2.2, 6.35) {VQE, Shor, QAOA, Chemistry Algorithms};
+        \draw[rounded corners=1.5mm, fill=darkblue!15, draw=darkblue, line width=1pt] (-6.4, 6.0) rectangle (-3.0, 6.85);
+        \node[font=\scriptsize\bfseries\color{darkblue}, align=center] at (-4.7, 6.42) {Layer 7\\Application};
+        \draw[rounded corners=1.5mm, fill=darkblue!5, draw=darkblue!40, line width=0.8pt] (-2.6, 6.0) rectangle (6.4, 6.85);
+        \node[font=\scriptsize\color{black!90}] at (1.9, 6.42) {VQE, Shor, QAOA, Quantum Chemistry Algorithms};
         
         % Layer 6: Presentation / IR
-        \draw[rounded corners=1.5mm, fill=compilerteal!10, draw=compilerteal, line width=1pt] (-5.5, 5.0) rectangle (5.5, 5.7);
-        \node[font=\footnotesize\bfseries\color{compilerteal}] at (-3.2, 5.35) {Layer 6: Intermediate Representation};
-        \node[font=\tiny] at (2.2, 5.35) {MLIR DQC Dialect, OpenQASM 3.0, QIR Bitcode};
+        \draw[rounded corners=1.5mm, fill=compilerteal!15, draw=compilerteal, line width=1pt] (-6.4, 5.0) rectangle (-3.0, 5.85);
+        \node[font=\scriptsize\bfseries\color{compilerteal}, align=center] at (-4.7, 5.42) {Layer 6\\Intermediate IR};
+        \draw[rounded corners=1.5mm, fill=compilerteal!5, draw=compilerteal!40, line width=0.8pt] (-2.6, 5.0) rectangle (6.4, 5.85);
+        \node[font=\scriptsize\color{black!90}] at (1.9, 5.42) {MLIR DQC Dialect, OpenQASM 3.0, QIR LLVM Bytecode};
         
         % Layer 5: Compiler / Partitioning
-        \draw[rounded corners=1.5mm, fill=compilerteal!15, draw=compilerteal, line width=1pt] (-5.5, 4.0) rectangle (5.5, 4.7);
-        \node[font=\footnotesize\bfseries\color{compilerteal}] at (-3.2, 4.35) {Layer 5: Compilation \& Scheduling};
-        \node[font=\tiny] at (2.2, 4.35) {Hypergraph Partitioning, Telegate Lowering, CPM JIT Scheduling};
+        \draw[rounded corners=1.5mm, fill=compilerteal!20, draw=compilerteal, line width=1pt] (-6.4, 4.0) rectangle (-3.0, 4.85);
+        \node[font=\scriptsize\bfseries\color{compilerteal}, align=center] at (-4.7, 4.42) {Layer 5\\Compilation};
+        \draw[rounded corners=1.5mm, fill=compilerteal!5, draw=compilerteal!40, line width=0.8pt] (-2.6, 4.0) rectangle (6.4, 4.85);
+        \node[font=\scriptsize\color{black!90}] at (1.9, 4.42) {Hypergraph Partitioning, Telegate Lowering, JIT Scheduling};
         
         % Layer 4: Quantum Transport
-        \draw[rounded corners=1.5mm, fill=quantumviolet!10, draw=quantumviolet, line width=1pt] (-5.5, 3.0) rectangle (5.5, 3.7);
-        \node[font=\footnotesize\bfseries\color{quantumviolet}] at (-3.2, 3.35) {Layer 4: Quantum Transport (Q-TCP)};
-        \node[font=\tiny] at (2.2, 3.35) {End-to-End Teleportation, Fidelity Guarantees, Congestion Control};
+        \draw[rounded corners=1.5mm, fill=quantumviolet!15, draw=quantumviolet, line width=1pt] (-6.4, 3.0) rectangle (-3.0, 3.85);
+        \node[font=\scriptsize\bfseries\color{quantumviolet}, align=center] at (-4.7, 3.42) {Layer 4\\Transport};
+        \draw[rounded corners=1.5mm, fill=quantumviolet!5, draw=quantumviolet!40, line width=0.8pt] (-2.6, 3.0) rectangle (6.4, 3.85);
+        \node[font=\scriptsize\color{black!90}] at (1.9, 3.42) {End-to-End Teleportation, Fidelity Guarantees, Flow Control};
         
         % Layer 3: Network / Routing
-        \draw[rounded corners=1.5mm, fill=quantumviolet!15, draw=quantumviolet, line width=1pt] (-5.5, 2.0) rectangle (5.5, 2.7);
-        \node[font=\footnotesize\bfseries\color{quantumviolet}] at (-3.2, 2.35) {Layer 3: Network Routing \& Swapping};
-        \node[font=\tiny] at (2.2, 2.35) {Multi-Hop Entanglement Swapping, Dijkstra Negativity Routing};
+        \draw[rounded corners=1.5mm, fill=quantumviolet!20, draw=quantumviolet, line width=1pt] (-6.4, 2.0) rectangle (-3.0, 2.85);
+        \node[font=\scriptsize\bfseries\color{quantumviolet}, align=center] at (-4.7, 2.42) {Layer 3\\Network Routing};
+        \draw[rounded corners=1.5mm, fill=quantumviolet!5, draw=quantumviolet!40, line width=0.8pt] (-2.6, 2.0) rectangle (6.4, 2.85);
+        \node[font=\scriptsize\color{black!90}] at (1.9, 2.42) {Multi-Hop Entanglement Swapping, Negativity Shortest Paths};
         
         % Layer 2: Link Layer
-        \draw[rounded corners=1.5mm, fill=insightorange!10, draw=insightorange, line width=1pt] (-5.5, 1.0) rectangle (5.5, 1.7);
-        \node[font=\footnotesize\bfseries\color{insightorange}] at (-3.2, 1.35) {Layer 2: Entanglement Link Layer};
-        \node[font=\tiny] at (2.2, 1.35) {Heralded Bell Pair Generation, BBPSSW/Deutsch Distillation};
+        \draw[rounded corners=1.5mm, fill=insightorange!15, draw=insightorange, line width=1pt] (-6.4, 1.0) rectangle (-3.0, 1.85);
+        \node[font=\scriptsize\bfseries\color{insightorange}, align=center] at (-4.7, 1.42) {Layer 2\\Link Layer};
+        \draw[rounded corners=1.5mm, fill=insightorange!5, draw=insightorange!40, line width=0.8pt] (-2.6, 1.0) rectangle (6.4, 1.85);
+        \node[font=\scriptsize\color{black!90}] at (1.9, 1.42) {Heralded Bell Pair Generation, BBPSSW/DEJMPS Purification};
         
         % Layer 1: Physical Layer
-        \draw[rounded corners=1.5mm, fill=gray!15, draw=black, line width=1pt] (-5.5, 0.0) rectangle (5.5, 0.7);
-        \node[font=\footnotesize\bfseries] at (-3.2, 0.35) {Layer 1: Physical Layer};
-        \node[font=\tiny] at (2.2, 0.35) {Microwave Transducers, Optomechanical Crystals, Cryo-Fibers};
+        \draw[rounded corners=1.5mm, fill=gray!20, draw=black!70, line width=1pt] (-6.4, 0.0) rectangle (-3.0, 0.85);
+        \node[font=\scriptsize\bfseries\color{black!80}, align=center] at (-4.7, 0.42) {Layer 1\\Physical Layer};
+        \draw[rounded corners=1.5mm, fill=gray!5, draw=black!30, line width=0.8pt] (-2.6, 0.0) rectangle (6.4, 0.85);
+        \node[font=\scriptsize\color{black!90}] at (1.9, 0.42) {Microwave Transducers, Optomechanical Crystals, Cryo-Fibers};
         
-        % Arrows
-        \foreach \y in {5.7, 4.7, 3.7, 2.7, 1.7, 0.7} {
-            \draw[<->, line width=0.8pt, gray] (0, \y+0.3) -- (0, \y);
+        % Vertical Inter-Layer Arrows
+        \foreach \y in {5.85, 4.85, 3.85, 2.85, 1.85, 0.85} {
+            \draw[<->, line width=0.8pt, color=darkblue!60] (-4.7, \y+0.15) -- (-4.7, \y);
+            \draw[<->, line width=0.8pt, color=compilerteal!70] (1.9, \y+0.15) -- (1.9, \y);
         }
     \end{tikzpicture}
-    \caption{The Seven-Layer Quantum Network OSI Reference Model. Applications compile through MLIR down to link-layer entanglement protocols and physical photonic transducers.}
+    \caption{The Seven-Layer Quantum Network OSI Reference Model. High-level quantum algorithms compile progressively through intermediate representations and multi-QPU passes down to heralded entanglement link generation and physical optomechanical transducers.}
     \label{fig:quantum_osi_stack_expanded}
 \end{figure}
 
@@ -169,9 +169,10 @@ At Layer 2 (Link Layer) and Layer 4 (Transport Layer), classical header metadata
 
 \begin{table}[htbp]
 \centering
+\small
 \caption{Structure of a 64-Byte Quantum Network Packet Frame (\texttt{Q-Frame})}
-\label{tab:qframe_format}
-\begin{tabular}{l c l}
+\label{tab:qframe_packet_spec}
+\begin{tabularx}{\textwidth}{p{3.5cm} c X}
 \toprule
 \textbf{Field Name} & \textbf{Bit Length} & \textbf{Description and Semantics} \\
 \midrule
@@ -185,29 +186,28 @@ At Layer 2 (Link Layer) and Layer 4 (Transport Layer), classical header metadata
 \texttt{Classical\_Fixup} & 8 bits & Feedforward Pauli Fixup Flags ($X^a Z^b$) \\
 \texttt{CRC32\_Checksum} & 32 bits & Header Integrity Check \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
-\begin{algorithmbox}{Listing: C++ Q-Frame Real-Time Deserializer and Validator}
-\begin{lstlisting}[language=C++, basicstyle=\ttfamily\scriptsize]
+\begin{lstlisting}[language=C++, caption={C++ Header Parser for Distributed Quantum Network Packet Frames (\texttt{Q-Frame})}]
 #include <cstdint>
-#include <cstring>
 #include <iostream>
+#include <stdexcept>
 
 struct __attribute__((packed)) QFrameHeader {
-    uint8_t  frame_type;        // 0x01: Bell-Gen, 0x02: Tele-Data
-    uint16_t source_qpu;        // Source node ID
-    uint16_t dest_qpu;          // Destination node ID
-    uint32_t epr_pair_id;       // Globally unique EPR pair ID
-    uint16_t fidelity_estimate; // Fixed point: F * 65535
-    uint64_t creation_ts_ns;    // Nanosecond White Rabbit timestamp
-    uint64_t expiry_ts_ns;      // Decoherence kill timestamp
-    uint8_t  classical_fixup;   // Bit 0: Pauli-X, Bit 1: Pauli-Z
+    uint8_t  frame_type;      // 0x01=EPR_GEN, 0x02=TELE_DATA, 0x03=PURIFY
+    uint16_t source_qpu;      // Origin node ID
+    uint16_t dest_qpu;        // Target node ID
+    uint32_t epr_pair_id;     // Unique Bell state handle
+    uint16_t fidelity_raw;    // Fixed-point: F = fidelity_raw / 65535.0
+    uint64_t creation_ts_ns;  // PTP White Rabbit epoch timestamp
+    uint64_t expiry_ts_ns;    // T2 decoherence cutoff threshold
+    uint8_t  fixup_flags;     // Bit 0: X-flip, Bit 1: Z-flip
     uint8_t  reserved[24];      // Reserved for QOS routing metadata
     uint32_t crc32_checksum;    // Integrity check
 };
 
-class QFrameValidator {
+class QFrameDecoder {
 public:
     static bool validate_and_route(const uint8_t* raw_buffer, size_t len, uint64_t current_time_ns) {
         if (len < sizeof(QFrameHeader)) return false;
@@ -234,7 +234,6 @@ public:
     }
 };
 \end{lstlisting}
-\end{algorithmbox}
 
 % ======================================================================
 % QUANTUM VIRTUAL MEMORY & DISTRIBUTED PAGING
@@ -248,14 +247,14 @@ In classical operating systems, \keyterm{Virtual Memory} abstracts physical RAM 
 \subsection{The Quantum Page Table (QPT)}
 Every allocated virtual qubit identifier $\text{VQID} \in [0, N_v-1]$ is tracked in the kernel's Quantum Page Table:
 \begin{equation}
-    \text{QPT}: \text{VQID} \longrightarrow \big( \text{QPU\_ID}, \; \text{Patch\_Coords}, \; \text{State\_Status}, \; \text{Fidelity\_Metric}, \; \text{Lock\_Bit} \big).
+    \text{QPT}: \text{VQID} \mapsto \big\langle \text{Node\_ID}, \, \text{Qubit\_Idx}, \, F_{\text{est}}, \, \text{Dirty\_Flag}, \, t_{\text{last\_access}} \big\rangle.
 \end{equation}
 
 \subsection{The $\mathcal{F}$-LRU Page Replacement Policy}
-When physical QPU capacity is exhausted, the DQ-OS kernel selects a victim logical qubit to evict using the \textbf{Fidelity-Weighted Least Recently Used ($\mathcal{F}$-LRU)} algorithm. Each resident page $p$ is assigned a dynamic eviction score:
+When physical QPU capacity is exhausted, the DQ-OS kernel selects a victim logical qubit to evict using the \keyterm{Fidelity-Weighted Least Recently Used ($\mathcal{F}$-LRU)} algorithm. Each resident page $p$ is assigned a dynamic eviction score:
 \begin{equation}
-    S(p) = \mathcal{F}_p(t) \cdot \exp\left( - \frac{t - t_{\text{last access}}}{T_2(p)} \right) \cdot \text{Priority}(p),
-    \label{eq:flru_eviction_score}
+    S(p) = \mathcal{F}_p(t) \cdot \exp\left( -\frac{t - t_{\text{last access}}}{T_2(p)} \right) \cdot \text{Priority}(p),
+    \label{eq:f_lru_scoring_expanded}
 \end{equation}
 where the page with the lowest score $S(p)$ is selected for eviction. Unlike classical pages which can be written to disk, clean logical states are teleported to secondary quantum memory racks or preserved via continuous QEC stabilizer cycling.
 
@@ -271,46 +270,44 @@ Fixed point-to-point fiber connections between cryostats create static network t
 \begin{figure}[htbp]
     \centering
     \begin{tikzpicture}[scale=0.88, >=stealth]
-        % Ingress Fibers
-        \node[font=\footnotesize\bfseries] at (-4.5, 2.5) {Ingress Fibers};
-        \node[font=\tiny] at (-4.5, 1.8) {From Cryo-Rack 1};
-        \node[font=\tiny] at (-4.5, 0.6) {From Cryo-Rack 2};
-        \node[font=\tiny] at (-4.5, -0.6) {From Cryo-Rack 3};
-        \node[font=\tiny] at (-4.5, -1.8) {From Cryo-Rack $N$};
-        
-        \draw[line width=1.5pt, color=quantumviolet] (-3.0, 1.8) -- (-1.8, 1.8);
-        \draw[line width=1.5pt, color=quantumviolet] (-3.0, 0.6) -- (-1.8, 0.6);
-        \draw[line width=1.5pt, color=quantumviolet] (-3.0, -0.6) -- (-1.8, -0.6);
-        \draw[line width=1.5pt, color=quantumviolet] (-3.0, -1.8) -- (-1.8, -1.8);
-        
-        % 3D MEMS Mirror Array Box
-        \draw[rounded corners=3mm, fill=quantumviolet!10, draw=quantumviolet, line width=1.2pt] (-1.8, -2.5) rectangle (1.8, 2.5);
-        \node[font=\small\bfseries\color{quantumviolet}] at (0, 2.1) {3D MEMS Matrix};
-        
-        % Tilting Mirrors
-        \foreach \y in {1.2, 0.4, -0.4, -1.2} {
-            \draw[fill=white, draw=insightorange, line width=1pt, rotate around={20:(-0.8, \y)}] (-1.1, \y-0.2) rectangle (-0.5, \y+0.2);
-            \draw[fill=white, draw=insightorange, line width=1pt, rotate around={-25:(0.8, \y)}] (0.5, \y-0.2) rectangle (1.1, \y+0.2);
+        % Ingress Fibers (Left)
+        \node[font=\footnotesize\bfseries\color{darkblue}] at (-4.8, 2.3) {Ingress Channels};
+        \foreach \y/\rack in {1.4/Rack 1, 0.5/Rack 2, -0.5/Rack 3, -1.4/Rack $N$} {
+            \node[font=\tiny\color{black!80}, anchor=east] at (-3.4, \y) {From Cryo-\rack};
+            \draw[line width=1.4pt, color=quantumviolet, ->] (-3.3, \y) -- (-2.4, \y);
         }
-        \node[font=\tiny\color{insightorange}] at (0, 0) {Electrostatic Tilting Micromirrors};
         
-        % Dynamic Beam Paths
-        \draw[line width=1.2pt, color=insightorange, dashed] (-1.8, 1.8) -- (-0.8, 1.2) -- (0.8, -0.4) -- (1.8, 0.6);
-        \draw[line width=1.2pt, color=insightorange, dashed] (-1.8, 0.6) -- (-0.8, 0.4) -- (0.8, 1.2) -- (1.8, 1.8);
+        % 3D MEMS Mirror Array Box (Center)
+        \draw[rounded corners=3mm, fill=quantumviolet!6, draw=quantumviolet, line width=1.2pt] (-2.4, -2.4) rectangle (2.4, 2.5);
+        \node[font=\small\bfseries\color{quantumviolet}] at (0, 2.05) {3D MEMS Matrix};
         
-        % Egress Fibers
-        \draw[line width=1.5pt, color=quantumviolet] (1.8, 1.8) -- (3.0, 1.8);
-        \draw[line width=1.5pt, color=quantumviolet] (1.8, 0.6) -- (3.0, 0.6);
-        \draw[line width=1.5pt, color=quantumviolet] (1.8, -0.6) -- (3.0, -0.6);
-        \draw[line width=1.5pt, color=quantumviolet] (1.8, -1.8) -- (3.0, -1.8);
+        % Ingress Micromirror Array (Left column in box)
+        \foreach \y in {1.4, 0.5, -0.5, -1.4} {
+            \draw[fill=insightorange!35, draw=insightorange!90!black, line width=1pt, rotate around={20:(-1.3, \y)}] (-1.6, \y-0.16) rectangle (-1.0, \y+0.16);
+        }
         
-        \node[font=\footnotesize\bfseries] at (4.5, 2.5) {Egress Fibers};
-        \node[font=\tiny] at (4.5, 1.8) {To Cryo-Rack 1};
-        \node[font=\tiny] at (4.5, 0.6) {To Cryo-Rack 2};
-        \node[font=\tiny] at (4.5, -0.6) {To Cryo-Rack 3};
-        \node[font=\tiny] at (4.5, -1.8) {To Cryo-Rack $N$};
+        % Egress Micromirror Array (Right column in box)
+        \foreach \y in {1.4, 0.5, -0.5, -1.4} {
+            \draw[fill=insightorange!35, draw=insightorange!90!black, line width=1pt, rotate around={-25:(1.3, \y)}] (1.0, \y-0.16) rectangle (1.6, \y+0.16);
+        }
+        
+        % Dynamic Optical Beam Paths
+        \draw[line width=1.1pt, color=orange!90!black, dashed] (-2.4, 1.4) -- (-1.3, 1.4) -- (1.3, -0.5) -- (2.4, -0.5);
+        \draw[line width=1.1pt, color=purple!90!black, dashed] (-2.4, 0.5) -- (-1.3, 0.5) -- (1.3, 1.4) -- (2.4, 1.4);
+        \draw[line width=1.1pt, color=compilerteal, dashed] (-2.4, -0.5) -- (-1.3, -0.5) -- (1.3, -1.4) -- (2.4, -1.4);
+        \draw[line width=1.1pt, color=examplegreen!80!black, dashed] (-2.4, -1.4) -- (-1.3, -1.4) -- (1.3, 0.5) -- (2.4, 0.5);
+        
+        % Subtitle label in center box
+        \node[font=\tiny\bfseries\color{insightorange}, fill=white, inner sep=2pt, rounded corners=0.5mm] at (0, -2.0) {Piezoelectric 2-Axis Micromirrors};
+        
+        % Egress Fibers (Right)
+        \node[font=\footnotesize\bfseries\color{darkblue}] at (4.8, 2.3) {Egress Channels};
+        \foreach \y/\rack in {1.4/Rack 1, 0.5/Rack 2, -0.5/Rack 3, -1.4/Rack $N$} {
+            \draw[line width=1.4pt, color=quantumviolet, ->] (2.4, \y) -- (3.3, \y);
+            \node[font=\tiny\color{black!80}, anchor=west] at (3.4, \y) {To Cryo-\rack};
+        }
     \end{tikzpicture}
-    \caption{3D MEMS optical crossbar switch architecture. Electrostatic piezoelectric actuators tilt microscopic gold-coated silicon mirrors, reconfiguring optical paths between dilution refrigerators in under 5 milliseconds with insertion loss $< 1.2$ dB.}
+    \caption{3D MEMS optical crossbar switch architecture. Electrostatic piezoelectric actuators tilt microscopic gold-coated silicon mirrors along two axes, dynamically reconfiguring flying photon paths between dilution refrigerators in under 5 milliseconds with insertion loss $< 1.2$ dB.}
     \label{fig:mems_crossbar_switch_expanded}
 \end{figure}
 

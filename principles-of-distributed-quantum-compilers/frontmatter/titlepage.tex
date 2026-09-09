@@ -1,27 +1,115 @@
 \begin{titlepage}
     \centering
-    \vspace*{2cm}
     
-    {\Huge\bfseries\color{darkblue} Principles of Distributed\\[0.3em] Quantum Compilers\par}
+    % Top Series Banner
+    \vspace*{-1.0cm}
+    {\scshape\bfseries\color{compilerteal}\small Graduate Texts in Quantum Computer Science \& Engineering \ $\cdot$ \ Volume I\par}
+    \vspace{0.3cm}
+    {\color{darkblue}\rule{\textwidth}{1.8pt}}\par
+    \vspace{0.6cm}
     
-    \vspace{1.5cm}
-    {\Large\itshape Architecture, Algorithms, and Multi-QPU Hardware Systems\par}
+    % Main Book Title
+    {\fontsize{26}{32}\selectfont\bfseries\color{darkblue} Principles of Distributed\\[0.25em] Quantum Compilers\par}
+    \vspace{0.4cm}
+    {\large\bfseries\color{quantumviolet} Architecture, Algorithms, and Multi-QPU Hardware Systems\par}
     
-    \vspace{2.5cm}
+    \vspace{0.6cm}
     
-    {\Large\textbf{Krish Kumar Sharma}\par}
-    {\texttt{krishkumarsharma72@gmail.com}\par}
+    % Central Hero Quantum Interconnect Artwork
+    \begin{tikzpicture}[scale=0.92, >=stealth]
+        % Background Subtle Field Grid
+        \draw[step=1.0cm, gray!15, very thin] (-5.6, -3.2) grid (5.6, 3.2);
+        
+        % Central Photonic Crossbar Hub (ROXC)
+        \draw[fill=quantumviolet!10, draw=quantumviolet, line width=1.4pt, rounded corners=3mm] (-1.6, -1.0) rectangle (1.6, 1.0);
+        \node[font=\scriptsize\bfseries\color{quantumviolet}, align=center] at (0, 0.35) {ROXC Photonic\\Switching Matrix};
+        \node[font=\tiny\color{quantumviolet!90}, align=center] at (0, -0.45) {Bell Pair Router\\$\ket{\Phi^+} = \frac{\ket{00}+\ket{11}}{\sqrt{2}}$};
+        
+        % QPU Cluster A (Top-Left)
+        \begin{scope}[shift={(-4.0, 2.0)}]
+            \draw[fill=darkblue!8, draw=darkblue, line width=1.2pt, rounded corners=2.5mm] (-1.4, -0.85) rectangle (1.4, 0.85);
+            \node[font=\scriptsize\bfseries\color{darkblue}] at (0, 0.52) {QPU Module $\alpha$};
+            \foreach \x/\y in {-0.7/0.0, 0.0/0.0, 0.7/0.0, -0.35/-0.4, 0.35/-0.4} {
+                \draw[fill=darkblue!30, draw=darkblue] (\x, \y) circle (2.2pt);
+            }
+            \draw[line width=0.5pt, color=darkblue!60] (-0.7,0) -- (0,0) -- (0.7,0) -- (0.35,-0.4) -- (-0.35,-0.4) -- (-0.7,0);
+        \end{scope}
+        
+        % QPU Cluster B (Top-Right)
+        \begin{scope}[shift={(4.0, 2.0)}]
+            \draw[fill=darkblue!8, draw=darkblue, line width=1.2pt, rounded corners=2.5mm] (-1.4, -0.85) rectangle (1.4, 0.85);
+            \node[font=\scriptsize\bfseries\color{darkblue}] at (0, 0.52) {QPU Module $\beta$};
+            \foreach \x/\y in {-0.7/0.0, 0.0/0.0, 0.7/0.0, -0.35/-0.4, 0.35/-0.4} {
+                \draw[fill=darkblue!30, draw=darkblue] (\x, \y) circle (2.2pt);
+            }
+            \draw[line width=0.5pt, color=darkblue!60] (-0.7,0) -- (0,0) -- (0.7,0) -- (0.35,-0.4) -- (-0.35,-0.4) -- (-0.7,0);
+        \end{scope}
+        
+        % QPU Cluster C (Bottom-Left - Magic State Factory)
+        \begin{scope}[shift={(-4.0, -2.0)}]
+            \draw[fill=examplegreen!8, draw=examplegreen!80!black, line width=1.2pt, rounded corners=2.5mm] (-1.4, -0.85) rectangle (1.4, 0.85);
+            \node[font=\scriptsize\bfseries\color{examplegreen!80!black}] at (0, 0.52) {Factory Module $\mathcal{T}$};
+            \foreach \x/\y in {-0.6/0.0, 0.0/0.0, 0.6/0.0, 0.0/-0.42} {
+                \draw[fill=examplegreen!40, draw=examplegreen!90!black] (\x, \y) circle (2.2pt);
+            }
+            \draw[line width=0.5pt, color=examplegreen!70!black] (-0.6,0) -- (0,0) -- (0.6,0) -- (0,-0.42) -- (-0.6,0);
+            \node[font=\tiny\bfseries\color{examplegreen!80!black}] at (0, -0.65) {$\ket{T}$ Distillation};
+        \end{scope}
+        
+        % QPU Cluster D (Bottom-Right)
+        \begin{scope}[shift={(4.0, -2.0)}]
+            \draw[fill=darkblue!8, draw=darkblue, line width=1.2pt, rounded corners=2.5mm] (-1.4, -0.85) rectangle (1.4, 0.85);
+            \node[font=\scriptsize\bfseries\color{darkblue}] at (0, 0.52) {QPU Module $\gamma$};
+            \foreach \x/\y in {-0.7/0.0, 0.0/0.0, 0.7/0.0, -0.35/-0.4, 0.35/-0.4} {
+                \draw[fill=darkblue!30, draw=darkblue] (\x, \y) circle (2.2pt);
+            }
+            \draw[line width=0.5pt, color=darkblue!60] (-0.7,0) -- (0,0) -- (0.7,0) -- (0.35,-0.4) -- (-0.35,-0.4) -- (-0.7,0);
+        \end{scope}
+        
+        % Entanglement Channels (Wavy Photonic Links)
+        \draw[<->, line width=1.6pt, color=quantumviolet, decorate, decoration={snake, amplitude=0.9mm, segment length=3.5mm}] 
+            (-2.6, 1.4) -- (-1.4, 0.8);
+        \draw[<->, line width=1.6pt, color=quantumviolet, decorate, decoration={snake, amplitude=0.9mm, segment length=3.5mm}] 
+            (2.6, 1.4) -- (1.4, 0.8);
+        \draw[<->, line width=1.6pt, color=examplegreen!80!black, decorate, decoration={snake, amplitude=0.9mm, segment length=3.5mm}] 
+            (-2.6, -1.4) -- (-1.4, -0.8);
+        \draw[<->, line width=1.6pt, color=quantumviolet, decorate, decoration={snake, amplitude=0.9mm, segment length=3.5mm}] 
+            (2.6, -1.4) -- (1.4, -0.8);
+            
+        % Classical Telemetry & Verification Badges
+        \draw[<->, dashed, line width=0.9pt, color=compilerteal] (-2.6, 2.0) -- (2.6, 2.0);
+        \node[font=\tiny\bfseries\color{compilerteal}, fill=white, inner sep=2pt, rounded corners=0.5mm] at (0, 2.0) {Sub-ns PTP Telemetry Bus};
+
+        \draw[<->, dashed, line width=0.9pt, color=compilerteal] (-2.6, -2.0) -- (2.6, -2.0);
+        \node[font=\tiny\bfseries\color{compilerteal}, fill=white, inner sep=2pt, rounded corners=0.5mm] at (0, -2.0) {Linear SSA Dataflow Bus};
+            
+        % Mathematical Quantum Field Tags
+        \node[font=\tiny\color{gray!60}] at (-4.8, 0.0) {$\mathcal{H}_{AB} = \mathcal{H}_A \otimes \mathcal{H}_B$};
+        \node[font=\tiny\color{gray!60}] at (4.8, 0.0) {$\mathfrak{su}(4) = \mathfrak{k} \oplus \mathfrak{p}$};
+    \end{tikzpicture}
+    
+    \vspace{0.7cm}
+    
+    % Author & Affiliation Block
+    {\Large\textbf{\color{darkblue} Krish Kumar Sharma}\par}
+    \vspace{0.15cm}
+    {\small\texttt{krishkumarsharma72@gmail.com}\par}
+    \vspace{0.05cm}
+    {\footnotesize\color{gray!80!black} Advanced Quantum Compiler \& Systems Architecture Group\par}
     
     \vfill
     
+    % Publisher Emblem & Footer
     \begin{center}
         \begin{tikzpicture}
-            \draw[color=compilerteal, line width=1.5pt] (-4,0) -- (4,0);
-            \node at (0,0.4) {\textbf{\color{quantumviolet} FIRST EDITION}};
+            \draw[color=compilerteal, line width=1.2pt] (-4.5, 0) -- (4.5, 0);
+            \node[fill=white, inner sep=4pt] at (0, 0) {\small\bfseries\color{quantumviolet} QUANTUM-BLADE ACADEMIC PRESS};
         \end{tikzpicture}
     \end{center}
     
-    \vspace{1.0cm}
-    {\large\today\par}
-    \vspace*{1.5cm}
+    \vspace{0.15cm}
+    {\footnotesize\scshape Cambridge $\cdot$ New York $\cdot$ Tokyo $\cdot$ Bengaluru\par}
+    \vspace{0.15cm}
+    {\scriptsize\color{gray} First Edition \ $\cdot$ \ \today\par}
+    \vspace*{0.2cm}
 \end{titlepage}

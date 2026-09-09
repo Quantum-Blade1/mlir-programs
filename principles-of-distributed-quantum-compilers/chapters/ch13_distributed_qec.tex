@@ -349,13 +349,13 @@ Because $A$ and $B$ commute in the group algebra ($A B = B A$), the CSS commutat
 \small
 \caption{Canonical Bivariate Bicycle qLDPC Codes and Interconnect Overheads}
 \label{tab:bivariate_bicycle_specs}
-\begin{tabularx}{\textwidth}{l c c c c X}
+\begin{tabularx}{\textwidth}{p{2.4cm} c c c c X}
 \toprule
-\textbf{Code Family} & \textbf{Parameters $[[n, k, d]]$} & \textbf{Polynomial $A(x,y)$} & \textbf{Polynomial $B(x,y)$} & \textbf{Rate $k/n$} & \textbf{Interconnects} \\
+\textbf{Code Family} & \textbf{Parameters $[[n, k, d]]$} & \textbf{Poly $A(x,y)$} & \textbf{Poly $B(x,y)$} & \textbf{Rate $k/n$} & \textbf{Remote Links} \\
 \midrule
-BB-72 & $[[72, 12, 6]]$ & $x^3 + y + y^2$ & $y^3 + x + x^2$ & $0.167$ & 6 Non-Local Links \\
-BB-144 & $[[144, 12, 12]]$ & $x^3 + y + y^2$ & $y^3 + x + x^2$ & $0.083$ & 12 Non-Local Links \\
-BB-288 & $[[288, 12, 18]]$ & $x^9 + y^3 + y^{24}$ & $y^9 + x^3 + x^{24}$ & $0.042$ & 24 Non-Local Links \\
+BB-72 & $[[72, 12, 6]]$ & $x^3 + y + y^2$ & $y^3 + x + x^2$ & $0.167$ & 6 Inter-QPU Links \\
+BB-144 & $[[144, 12, 12]]$ & $x^3 + y + y^2$ & $y^3 + x + x^2$ & $0.083$ & 12 Inter-QPU Links \\
+BB-288 & $[[288, 12, 18]]$ & $x^9 + y^3 + y^{24}$ & $y^9 + x^3 + x^{24}$ & $0.042$ & 24 Inter-QPU Links \\
 \bottomrule
 \end{tabularx}
 \end{table}

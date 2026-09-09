@@ -302,32 +302,50 @@ where $A(x)$ is the cross-sectional area, $\kappa(T) = \kappa_0 T^\beta$ is the 
 \begin{figure}[htbp]
     \centering
     \begin{tikzpicture}[scale=0.88, >=stealth]
-        % Stages
-        \foreach \y/\temp/\name/\pwr in {6.0/300 K/Vacuum Flange/Ambient, 4.8/50 K/PT1 Stage/20 W, 3.6/4.2 K/PT2 Stage/1.5 W, 2.4/800 mK/Still Stage/25 mW, 1.2/100 mK/Cold Plate/{200 $\mu$W}, 0.0/15 mK/Mixing Chamber/{20 $\mu$W}} {
-            \draw[fill=blue!10, draw=darkblue, rounded corners=1mm, line width=1pt] (0, \y) rectangle (11, \y+0.6);
-            \node[font=\footnotesize\bfseries\color{darkblue}, anchor=west] at (0.3, \y+0.3) {\temp \ (\name)};
-            \node[font=\footnotesize\bfseries\color{red!70!black}, anchor=east] at (10.7, \y+0.3) {Cooling: \pwr};
+        % Stages plates (Left Column)
+        \foreach \y/\temp/\name/\pwr in {
+            6.0/300 K/Vacuum Flange/Ambient Lab,
+            4.8/50 K/Pulse Tube 1/20.0 W,
+            3.6/4.2 K/Pulse Tube 2/1.50 W,
+            2.4/800 mK/Still Stage/25.0 mW,
+            1.2/100 mK/Cold Plate/{250 $\mu$W},
+            0.0/15 mK/Mixing Chamber/{25.0 $\mu$W}
+        } {
+            % Stage Temperature Box
+            \draw[fill=darkblue!8, draw=darkblue, rounded corners=1.5mm, line width=1pt] (-0.5, \y) rectangle (4.2, \y+0.6);
+            \node[font=\footnotesize\bfseries\color{darkblue}, anchor=west] at (-0.3, \y+0.3) {\temp};
+            \node[font=\scriptsize\color{darkblue!80}, anchor=east] at (4.0, \y+0.3) {\name};
+            
+            % Cooling Power Tag (Right Column)
+            \draw[fill=red!6, draw=red!40, rounded corners=1mm, line width=0.8pt] (9.6, \y) rectangle (12.6, \y+0.6);
+            \node[font=\scriptsize\bfseries\color{red!80!black}, align=center] at (11.1, \y+0.3) {Cool: \pwr};
         }
         
-        % Coax Line passing through
-        \draw[line width=2.5pt, gray!80] (3.0, 6.6) -- (3.0, 0.0);
-        \node[font=\tiny\bfseries, color=gray!90!black, rotate=90] at (2.7, 3.3) {Semi-Rigid CuNi Coax ($50\,\Omega$)};
+        % Coax Transmission Line Channel (Middle Column)
+        \draw[line width=3pt, color=gray!60] (5.2, 6.6) -- (5.2, 0.0);
+        \node[font=\tiny\bfseries\color{gray!80!black}, rotate=90] at (4.8, 3.3) {CuNi Coaxial Line ($50\,\Omega$)};
         
-        % Attenuators and Thermal Clamps
-        \foreach \y/\att in {4.8/0 dB Thermal Clamp, 3.6/$-20$ dB Attenuator, 2.4/$-10$ dB Attenuator, 1.2/$-10$ dB Attenuator, 0.0/$-20$ dB Attenuator} {
-            \draw[fill=orange!80, draw=orange!90!black] (2.8, \y+0.15) rectangle (3.2, \y+0.45);
-            \node[font=\tiny\bfseries\color{orange!90!black}, anchor=west] at (3.4, \y+0.3) {\att};
+        % Attenuators and Thermal Clamps along the Coax
+        \foreach \y/\att/\bg in {
+            4.8/0 dB Thermal Clamp/orange!20,
+            3.6/$-20$ dB Attenuator/orange!30,
+            2.4/$-10$ dB Attenuator/orange!30,
+            1.2/$-10$ dB Attenuator/orange!30,
+            0.0/$-20$ dB Attenuator/orange!40
+        } {
+            \draw[fill=\bg, draw=orange!90!black, line width=1pt, rounded corners=0.5mm] (4.95, \y+0.1) rectangle (5.45, \y+0.5);
+            \node[font=\tiny\bfseries\color{orange!90!black}, anchor=west] at (5.65, \y+0.3) {\att};
         }
         
-        % Noise Power Labels
-        \node[font=\tiny\color{purple}, anchor=west] at (6.8, 5.7) {Thermal Photons: $n_{\text{th}} \approx 1{,}250$};
-        \node[font=\tiny\color{purple}, anchor=west] at (6.8, 4.5) {Thermal Photons: $n_{\text{th}} \approx 208$};
-        \node[font=\tiny\color{purple}, anchor=west] at (6.8, 3.3) {Thermal Photons: $n_{\text{th}} \approx 17.0$};
-        \node[font=\tiny\color{purple}, anchor=west] at (6.8, 2.1) {Thermal Photons: $n_{\text{th}} \approx 2.84$};
-        \node[font=\tiny\color{purple}, anchor=west] at (6.8, 0.9) {Thermal Photons: $n_{\text{th}} \approx 0.091$};
-        \node[font=\tiny\bfseries\color{compilerteal}, anchor=west] at (6.8, -0.3) {Pristine Ground State: $n_{\text{th}} = 1.09 \times 10^{-7}$};
+        % Thermal Photon Occupancy Steps
+        \node[font=\tiny\color{quantumviolet}, anchor=west] at (6.2, 5.4) {$\bar{n}_{\text{th}} \approx 1{,}250\text{ photons}$};
+        \node[font=\tiny\color{quantumviolet}, anchor=west] at (6.2, 4.2) {$\bar{n}_{\text{th}} \approx 208\text{ photons}$};
+        \node[font=\tiny\color{quantumviolet}, anchor=west] at (6.2, 3.0) {$\bar{n}_{\text{th}} \approx 17.0\text{ photons}$};
+        \node[font=\tiny\color{quantumviolet}, anchor=west] at (6.2, 1.8) {$\bar{n}_{\text{th}} \approx 2.84\text{ photons}$};
+        \node[font=\tiny\color{quantumviolet}, anchor=west] at (6.2, 0.6) {$\bar{n}_{\text{th}} \approx 0.091\text{ photons}$};
+        \node[font=\tiny\bfseries\color{compilerteal}, anchor=west] at (6.2, -0.4) {$\bar{n}_{\text{th}} = 1.09 \times 10^{-7}\text{ (Quantum Ground State)}$};
     \end{tikzpicture}
-    \caption{Detailed thermal attenuation and noise suppression chain across the six dilution refrigerator stages. Resistive attenuators thermalize incoming microwave photons at each stage, stepping thermal photon occupancy from $\sim 1{,}250$ at $300\text{ K}$ down to $10^{-7}$ at the $15\text{ mK}$ mixing chamber.}
+    \caption{Detailed multi-stage cryogenic microwave attenuation chain. The coaxial control line passes from room temperature ($300\text{ K}$) down to the mixing chamber ($15\text{ mK}$). Resistive cold attenuators thermalize Johnson-Nyquist blackbody radiation at each discrete cooling stage, suppressing thermal photon occupancy from $\bar{n}_{\text{th}} \approx 1{,}250$ down to $\bar{n}_{\text{th}} \approx 10^{-7}$ to prevent qubit dephasing.}
     \label{fig:detailed_attenuation_chain}
 \end{figure}
 
